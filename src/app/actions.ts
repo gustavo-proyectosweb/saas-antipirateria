@@ -2,6 +2,25 @@
 
 import { createClient } from '@/lib/supabase/server'
 
+export async function testRLS() {
+  const supabase = await createClient()
+
+  // Intentamos consultar la tabla 'products' sin estar autenticados (cliente anónimo/público)
+  const { data, error } = await supabase.from('products').select('*')
+
+  if (error) {
+    console.error('❌ Error de consulta:', error.message)
+    return { success: false, error: error.message }
+  }
+
+  console.log('🔒 Resultado de RLS para usuario no autenticado:', data)
+  return { success: true, count: data.length, data }
+}
+
+/*'use server'
+
+import { createClient } from '@/lib/supabase/server'
+
 export async function testSupabaseConnection() {
   const supabase = await createClient()
   
@@ -22,4 +41,4 @@ export async function testSupabaseConnection() {
 
   console.log('✅ Conexión con Supabase exitosa:', data)
   return { success: true, data }
-}
+}*/

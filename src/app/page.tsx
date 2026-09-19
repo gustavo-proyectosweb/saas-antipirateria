@@ -1,4 +1,29 @@
-import { testSupabaseConnection } from './actions'
+import { testRLS } from './actions'
+
+export default function Home() {
+  async function handleTest() {
+    'use server'
+    const res = await testRLS()
+    console.log('Resultado en servidor:', res)
+  }
+
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center p-24">
+      <h1 className="text-3xl font-bold mb-6">Prueba de Seguridad RLS</h1>
+      <form action={handleTest}>
+        <button
+          type="submit"
+          className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Probar RLS Anónimo
+        </button>
+      </form>
+    </main>
+  )
+}
+
+
+/*import { testSupabaseConnection } from './actions'
 
 export default function Home() {
   async function handleTest() {
@@ -20,4 +45,4 @@ export default function Home() {
       </form>
     </main>
   )
-}
+}*/
