@@ -1,25 +1,21 @@
-import { PDFDocument } from 'pdf-lib'
+import { PDFDocument, rgb } from 'pdf-lib'
 import * as crypto from 'crypto'
+
+// --- (Conservamos las funciones del Miércoles) ---
 
 export interface ForensicPayload {
   purchaseId: string
   buyerEmail: string
 }
 
-/**
- * Genera un hash SHA-256 corto del email del comprador para no guardar el email en texto plano
- */
 function hashEmail(email: string): string {
   return crypto
     .createHash('sha256')
     .update(email.trim().toLowerCase())
     .digest('hex')
-    .substring(0, 16) // Nos quedamos con los primeros 16 caracteres
+    .substring(0, 16)
 }
 
-/**
- * Convierte los datos de la compra a un payload codificado en Base64
- */
 export function encodePayload(payload: ForensicPayload): string {
   const emailHash = hashEmail(payload.buyerEmail)
   const rawData = JSON.stringify({
@@ -27,14 +23,9 @@ export function encodePayload(payload: ForensicPayload): string {
     eh: emailHash,
     ts: Date.now(),
   })
-
-  // Codificar a Base64 para que no sea texto plano legible a simple vista
   return Buffer.from(rawData, 'utf-8').toString('base64')
 }
 
-/**
- * Decodifica un string Base64 para recuperar el payload
- */
 export function decodePayload(encoded: string): { pid: string; eh: string; ts: number } | null {
   try {
     const decoded = Buffer.from(encoded, 'base64').toString('utf-8')
@@ -45,21 +36,78 @@ export function decodePayload(encoded: string): { pid: string; eh: string; ts: n
 }
 
 /**
- * Inyecta los metadatos forenses invisibles en un archivo PDF
+ * Convierte el purchaseId en una coordenada (X, Y) determinística dentro de la página.
  */
+function getDeterministicPosition(purchaseId: string, width: number, height: number) {
+  const hash = crypto.createHash('sha256').update(purchaseId).digest('hex')
+  
+  // Convertimos partes del hash hexadecimal en números entre 10 y 100
+  const offsetX = (parseInt(hash.substring(0, 4), 16) % 90) + 10
+  const offsetY = (parseInt(hash.substring(4, 8), 16) % 90) + 10
+
+  // Calculamos posiciones basadas en márgenes de la página
+  const x = (width * (offsetX / 100))
+  const y = (height * (offsetY / 100))
+
+  return { x, y }
+}
+
+/**
+ * Inyecta la marca de agua vectorial submilimétrica e imperceptible
+ */
+export async function injectVectorForensicMark(
+  pdfBuffer: Buffer,
+  purchaseId: string
+): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.load(pdfBuffer)
+  const pages = pdfDoc.getPages()
+
+  if (pages.length === 0) {
+    throw new Error('El PDF no contiene páginas')
+  }
+
+  // Aplicamos la marca en la primera página
+  const firstPage = pages[0]
+  const { width, height } = firstPage.getSize()
+
+  // Obtenemos las coordenadas invisibles derivadas de forma única para esta compra
+  const { x, y } = getDeterministicPosition(purchaseId, width, height)
+
+  // Dibujamos un micropunto imperceptible (de 0.2px de radio y opacidad de 0.01)
+  firstPage.drawCircle({
+    x,
+    y,
+    size: 0.2,
+    color: rgb(0, 0, 0),
+    opacity: 0.01,
+  })
+
+  const modifiedBytes = await pdfDoc.save()
+  return Buffer.from(modifiedBytes)
+}
+
+/**
+ * Función principal que aplica AMBAS capas de seguridad (Metadatos + Vectorial)
+ */
+export async function applyFullForensicProtection(
+  pdfBuffer: Buffer,
+  payload: ForensicPayload
+): Promise<Buffer> {
+  // Capa 1: Metadatos
+  const pdfWithMetadata = await injectForensicMetadata(pdfBuffer, payload)
+  // Capa 2: Micro-variación vectorial
+  const finalPdf = await injectVectorForensicMark(pdfWithMetadata, payload.purchaseId)
+  return finalPdf
+}
+
 export async function injectForensicMetadata(
   pdfBuffer: Buffer,
   payload: ForensicPayload
 ): Promise<Buffer> {
-  // 1. Cargar el PDF existente
   const pdfDoc = await PDFDocument.load(pdfBuffer)
-
-  // 2. Codificar la marca forense en Base64
   const encodedPayload = encodePayload(payload)
   const forensicTag = `WM-R2-${encodedPayload}`
 
-  // 3. Escribir metadatos estándar (Subject y Keywords)
-  // Agregamos las palabras clave sin sobrescribir información crítica visible
   const existingKeywords = pdfDoc.getKeywords() || ''
   const updatedKeywords = existingKeywords
     ? `${existingKeywords}; ${forensicTag}`
@@ -67,19 +115,12 @@ export async function injectForensicMetadata(
 
   pdfDoc.setSubject(`Protected Document [ID: ${payload.purchaseId.substring(0, 8)}]`)
   pdfDoc.setKeywords([updatedKeywords])
-
-  // 4. Inyectar clave custom directa en el diccionario Info del PDF (Incrustación profunda)
-  // Esto hace que el valor viva dentro de las estructuras internas del PDF
   pdfDoc.setProducer(`PrintablesVault Forensics (${forensicTag})`)
 
-  // 5. Guardar el PDF modificado y retornarlo como Buffer
   const modifiedPdfBytes = await pdfDoc.save()
   return Buffer.from(modifiedPdfBytes)
 }
 
-/**
- * Extrae y decodifica la marca forense de un PDF
- */
 export async function extractForensicMetadata(
   pdfBuffer: Buffer
 ): Promise<{ pid: string; eh: string; ts: number } | null> {
@@ -88,7 +129,6 @@ export async function extractForensicMetadata(
     const producer = pdfDoc.getProducer() || ''
     const keywords = pdfDoc.getKeywords() || ''
 
-    // Buscar el patrón "WM-R2-" en los campos
     const match =
       producer.match(/WM-R2-([A-Za-z0-9+/=]+)/) ||
       keywords.match(/WM-R2-([A-Za-z0-9+/=]+)/)
