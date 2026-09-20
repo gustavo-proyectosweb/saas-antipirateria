@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { SupportedPlatform } from '@/lib/webhooks/types'
 import { normalizeWebhookPayload } from '@/lib/webhooks/mapper'
+import { verifyShopifyHmac } from '@/lib/webhooks/verifyShopify'
 
 export async function POST(
   request: Request,
@@ -11,7 +12,7 @@ export async function POST(
     const resolvedParams = await params
     const platform = resolvedParams.platform as SupportedPlatform
 
-    // Validar si es una plataforma soportada
+    // 1. Validar plataforma
     if (platform !== 'shopify' && platform !== 'tiendanube') {
       return NextResponse.json(
         { error: `Plataforma '${resolvedParams.platform}' no válida` },
@@ -19,17 +20,32 @@ export async function POST(
       )
     }
 
-    // Leer el cuerpo JSON enviado por la plataforma
-    const payload = await request.json()
+    // 2. Obtener el cuerpo en texto crudo (RAW Body)
+    const rawBody = await request.text()
 
-    // Mapear/Normalizar los datos
+    // 3. Verificación de seguridad específica para Shopify
+    if (platform === 'shopify') {
+      const hmacHeader = request.headers.get('x-shopify-hmac-sha256')
+      const isValid = verifyShopifyHmac(rawBody, hmacHeader)
+
+      if (!isValid) {
+        console.warn('⚠️ Intento de webhook rechazado: Firma HMAC de Shopify inválida')
+        return NextResponse.json(
+          { error: 'No autorizado: Firma HMAC inválida' },
+          { status: 401 }
+        )
+      }
+    }
+
+    // 4. Convertir el texto a JSON para el mapper
+    const payload = JSON.parse(rawBody)
+
+    // 5. Mapear datos
     const normalizedEvent = normalizeWebhookPayload(platform, payload)
 
-    // 🔍 Log temporal para verificación
-    console.log('✅ Webhook recibido y normalizado con éxito:')
+    console.log('✅ Webhook autorizado y normalizado:')
     console.dir(normalizedEvent, { depth: null })
 
-    // Responder con 200 OK a la plataforma
     return NextResponse.json({
       received: true,
       data: normalizedEvent,
@@ -37,7 +53,7 @@ export async function POST(
   } catch (error) {
     console.error('❌ Error procesando el webhook:', error)
     return NextResponse.json(
-      { error: 'Error al procesar el payload del webhook' },
+      { error: 'Error interno al procesar el webhook' },
       { status: 500 }
     )
   }
