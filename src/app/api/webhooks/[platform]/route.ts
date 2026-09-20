@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { SupportedPlatform } from '@/lib/webhooks/types'
 import { normalizeWebhookPayload } from '@/lib/webhooks/mapper'
 import { verifyShopifyHmac } from '@/lib/webhooks/verifyShopify'
+import { verifyTiendanubeHmac } from '@/lib/webhooks/verifyTiendanube'
 
 export async function POST(
   request: Request,
@@ -23,13 +24,11 @@ export async function POST(
     // 2. Obtener el cuerpo en texto crudo (RAW Body)
     const rawBody = await request.text()
 
-    // 3. Verificación de seguridad específica para Shopify
+    // 3. Verificación de firma según la plataforma
     if (platform === 'shopify') {
       const hmacHeader = request.headers.get('x-shopify-hmac-sha256')
-      const isValid = verifyShopifyHmac(rawBody, hmacHeader)
-
-      if (!isValid) {
-        console.warn('⚠️ Intento de webhook rechazado: Firma HMAC de Shopify inválida')
+      if (!verifyShopifyHmac(rawBody, hmacHeader)) {
+        console.warn('⚠️ Webhook Shopify rechazado: Firma HMAC inválida')
         return NextResponse.json(
           { error: 'No autorizado: Firma HMAC inválida' },
           { status: 401 }
@@ -37,13 +36,25 @@ export async function POST(
       }
     }
 
-    // 4. Convertir el texto a JSON para el mapper
-    const payload = JSON.parse(rawBody)
+    if (platform === 'tiendanube') {
+      const hmacHeader =
+        request.headers.get('x-linkedstore-hmac-sha256') ||
+        request.headers.get('http_x_linkedstore_hmac_sha256')
 
-    // 5. Mapear datos
+      if (!verifyTiendanubeHmac(rawBody, hmacHeader)) {
+        console.warn('⚠️ Webhook Tiendanube rechazado: Firma HMAC inválida')
+        return NextResponse.json(
+          { error: 'No autorizado: Firma HMAC inválida' },
+          { status: 401 }
+        )
+      }
+    }
+
+    // 4. Convertir texto a JSON para normalizar
+    const payload = JSON.parse(rawBody)
     const normalizedEvent = normalizeWebhookPayload(platform, payload)
 
-    console.log('✅ Webhook autorizado y normalizado:')
+    console.log(`✅ Webhook de ${platform.toUpperCase()} autorizado y normalizado:`)
     console.dir(normalizedEvent, { depth: null })
 
     return NextResponse.json({
