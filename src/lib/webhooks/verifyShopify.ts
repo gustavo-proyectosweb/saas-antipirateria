@@ -3,12 +3,15 @@ import crypto from 'crypto'
 
 /**
  * Verifica si el webhook proviene legítimamente de Shopify
- * comparando la firma HMAC recibida con el texto original sin modificar (raw body).
+ * comparando la firma HMAC recibida con el texto original sin modificar (raw body)
+ * utilizando el webhook_secret específico de la creadora.
  */
-export function verifyShopifyHmac(rawBody: string, hmacHeader: string | null): boolean {
-  const secret = process.env.SHOPIFY_WEBHOOK_SECRET
-
-  // Si no hay firma en el header o no configuramos el secreto en .env, rechazamos
+export function verifyShopifyHmac(
+  rawBody: string,
+  hmacHeader: string | null,
+  secret: string
+): boolean {
+  // Si no hay firma en el header o no se proporcionó el secreto de la creadora, rechazamos
   if (!hmacHeader || !secret) {
     return false
   }

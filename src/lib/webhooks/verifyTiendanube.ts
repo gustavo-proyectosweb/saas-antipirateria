@@ -3,11 +3,14 @@ import crypto from 'crypto'
 
 /**
  * Verifica si el webhook proviene de Tiendanube comparando el header
- * x-linkedstore-hmac-sha256 con el hash hexadecimal calculado sobre el raw body.
+ * x-linkedstore-hmac-sha256 con el hash hexadecimal calculado sobre el raw body
+ * utilizando el webhook_secret específico de la creadora.
  */
-export function verifyTiendanubeHmac(rawBody: string, hmacHeader: string | null): boolean {
-  const secret = process.env.TIENDANUBE_CLIENT_SECRET
-
+export function verifyTiendanubeHmac(
+  rawBody: string,
+  hmacHeader: string | null,
+  secret: string
+): boolean {
   if (!hmacHeader || !secret) {
     return false
   }
