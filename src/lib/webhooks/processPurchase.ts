@@ -2,13 +2,21 @@
 import { createClient } from '@supabase/supabase-js'
 import { NormalizedOrderEvent } from './types'
 
-// Usamos el cliente con la Service Role Key para tener acceso de servidor sin RLS
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Helper para instanciar el cliente con Service Role Key solo bajo demanda (Lazy Instantiation)
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!url || !key) {
+    throw new Error('Faltan variables de entorno requeridas para Supabase Admin (NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY)')
+  }
+
+  return createClient(url, key)
+}
 
 export async function processPurchase(event: NormalizedOrderEvent) {
+  const supabaseAdmin = getSupabaseAdmin()
+
   // 1. Buscar el producto interno mediante el ID externo que nos dio la tienda
   const { data: product, error: productError } = await supabaseAdmin
     .from('products')
@@ -28,7 +36,6 @@ export async function processPurchase(event: NormalizedOrderEvent) {
   }
 
   // 2. Insertar la compra de forma IDEMPOTENTE
-  // .ignore() equivale a ON CONFLICT DO NOTHING en Supabase
   const { data: purchase, error: purchaseError } = await supabaseAdmin
     .from('purchases')
     .insert({
@@ -45,22 +52,22 @@ export async function processPurchase(event: NormalizedOrderEvent) {
     .single()
 
   if (purchaseError) {
-  // 23505 = conflicto de clave única en Postgres (compra duplicada)
-  if (purchaseError.code === '23505') {
-    console.log(
-      `ℹ️ Webhook duplicado recibido (Order ID: ${event.orderId}). Ignorando sin error.`
-    )
-    return {
-      success: true,
-      duplicated: true,
-      message: 'Compra ya procesada anteriormente',
+    // 23505 = conflicto de clave única en Postgres (compra duplicada)
+    if (purchaseError.code === '23505') {
+      console.log(
+        `ℹ️ Webhook duplicado recibido (Order ID: ${event.orderId}). Ignorando sin error.`
+      )
+      return {
+        success: true,
+        duplicated: true,
+        message: 'Compra ya procesada anteriormente',
+      }
     }
-  }
 
-  // 🔍 Imprimir el detalle completo del error de Supabase
-  console.error('❌ Detalle del error en Supabase:', JSON.stringify(purchaseError, null, 2))
-  throw purchaseError
-}
+    // 🔍 Imprimir el detalle completo del error de Supabase
+    console.error('❌ Detalle del error en Supabase:', JSON.stringify(purchaseError, null, 2))
+    throw purchaseError
+  }
 
   console.log('🎉 Compra guardada con éxito en la BD:', purchase.id)
 
