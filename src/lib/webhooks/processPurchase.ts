@@ -1,6 +1,7 @@
 // src/lib/webhooks/processPurchase.ts
 import { createClient } from '@supabase/supabase-js'
 import { NormalizedOrderEvent } from './types'
+import { createAccessToken } from '@/lib/tokens/generateToken'
 
 // Helper para instanciar el cliente con Service Role Key solo bajo demanda (Lazy Instantiation)
 function getSupabaseAdmin() {
@@ -71,9 +72,16 @@ export async function processPurchase(event: NormalizedOrderEvent) {
 
   console.log('🎉 Compra guardada con éxito en la BD:', purchase.id)
 
+  // 3. Generar el token de acceso automáticamente para esta nueva compra
+  const tokenResult = await createAccessToken(purchase.id, 30)
+
+  console.log(`🎟️ Access Token generado: ${tokenResult.token} (Expira: ${tokenResult.expiresAt.toISOString()})`)
+
   return {
     success: true,
     duplicated: false,
     purchaseId: purchase.id,
+    accessToken: tokenResult.token,
+    expiresAt: tokenResult.expiresAt,
   }
 }
