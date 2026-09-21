@@ -1,4 +1,6 @@
 // src/app/download/[token]/page.tsx
+export const dynamic = 'force-dynamic'
+import DownloadButton from '@/app/api/download/[token]/DownloadButton'
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 
@@ -112,14 +114,7 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
           </p>
         </div>
 
-        <a 
-          href={fileKey} 
-          target="_blank" 
-          rel="noopener noreferrer"
-          style={downloadButtonStyle}
-        >
-          ⬇️ Descargar mi archivo
-        </a>
+        <DownloadButton token={token} style={downloadButtonStyle} />
 
         <p style={footerNoticeStyle}>
           🔒 Este archivo cuenta con protección y trazabilidad digital vinculada a tu correo electrónico.
