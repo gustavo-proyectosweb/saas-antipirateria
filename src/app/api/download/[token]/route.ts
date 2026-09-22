@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
 import { stampPdf } from '@/lib/forensics/stamp'
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit'
 
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -41,6 +42,19 @@ interface RouteParams {
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  // --- APLICAR RATE LIMIT POR IP ---
+  const clientIp = getClientIp(request)
+  // Límite: Máximo 10 peticiones por minuto por IP
+  const { isRateLimited } = checkRateLimit(clientIp, 10, 60 * 1000)
+
+  if (isRateLimited) {
+    console.warn(`⚠️ Rate limit excedido para la IP: ${clientIp}`)
+    return NextResponse.json(
+      { error: 'Demasiadas solicitudes recibidas. Por favor, aguardá un minuto e intentalo nuevamente.' },
+      { status: 429 }
+    )
+  }
+  
   const { token } = await params
   const supabaseAdmin = getSupabaseAdmin()
 
