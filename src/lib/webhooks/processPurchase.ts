@@ -36,57 +36,93 @@ export async function processPurchase(event: NormalizedOrderEvent) {
     }
   }
 
-  // 2. Insertar la compra de forma IDEMPOTENTE
-  const { data: purchase, error: purchaseError } = await supabaseAdmin
+  // 2. Verificar si la compra ya existe por external_order_id y platform
+  const { data: existingPurchase } = await supabaseAdmin
     .from('purchases')
-    .insert({
-      product_id: product.id,
-      creator_id: product.creator_id,
-      buyer_email: event.customerEmail,
-      external_order_id: event.orderId,
-      platform: event.platform,
-      amount: event.totalAmount,
-      currency: event.currency,
-      status: 'completed',
-    })
-    .select()
+    .select('id')
+    .eq('external_order_id', event.orderId)
+    .eq('platform', event.platform)
     .single()
 
-  if (purchaseError) {
-    if (purchaseError.code === '23505') {
-      console.log(
-        `ℹ️ Webhook duplicado recibido (Order ID: ${event.orderId}). Ignorando sin error.`
-      )
-      return {
-        success: true,
-        duplicated: true,
-        message: 'Compra ya procesada anteriormente',
+  let purchase = existingPurchase
+
+  if (!purchase) {
+    // Insertar la compra de forma IDEMPOTENTE
+    const { data: newPurchase, error: purchaseError } = await supabaseAdmin
+      .from('purchases')
+      .insert({
+        product_id: product.id,
+        creator_id: product.creator_id,
+        buyer_email: event.customerEmail,
+        external_order_id: event.orderId,
+        platform: event.platform,
+        amount: event.totalAmount,
+        currency: event.currency,
+        status: 'completed',
+      })
+      .select()
+      .single()
+
+    if (purchaseError) {
+      if (purchaseError.code === '23505') {
+        console.log(
+          `ℹ️ Webhook duplicado recibido (Order ID: ${event.orderId}). Ignorando sin error.`
+        )
+        return {
+          success: true,
+          duplicated: true,
+          message: 'Compra ya procesada anteriormente',
+        }
       }
+
+      console.error('❌ Detalle del error en Supabase:', JSON.stringify(purchaseError, null, 2))
+      throw purchaseError
     }
 
-    console.error('❌ Detalle del error en Supabase:', JSON.stringify(purchaseError, null, 2))
-    throw purchaseError
+    purchase = newPurchase
   }
 
-  console.log('🎉 Compra guardada con éxito en la BD:', purchase.id)
+  // Validación de seguridad para TypeScript (asegura que purchase no sea null/undefined)
+  if (!purchase) {
+    throw new Error('No se pudo obtener ni registrar la compra.')
+  }
 
-  // 3. Generar el token de acceso automáticamente
-  const tokenResult = await createAccessToken(purchase.id, 30)
+  if (!existingPurchase) {
+    console.log('🎉 Compra guardada con éxito en la BD:', purchase.id)
+  } else {
+    console.log(`ℹ️ Reutilizando compra existente ID: ${purchase.id}`)
+  }
 
-  console.log(`🎟️ Access Token generado: ${tokenResult.token}`)
+  // 3. Generar o recuperar el token de acceso
+  let activeToken: string
 
-  // 4. Enviar email de entrega (envuelto en un try/catch lógico para no romper la respuesta 200 al webhook)
+  const { data: existingToken } = await supabaseAdmin
+    .from('access_tokens')
+    .select('token')
+    .eq('purchase_id', purchase.id)
+    .single()
+
+  if (existingToken) {
+    activeToken = existingToken.token
+    console.log(`🎟️ Reutilizando Access Token existente: ${activeToken}`)
+  } else {
+    const tokenResult = await createAccessToken(purchase.id, 30)
+    activeToken = tokenResult.token
+    console.log(`🎟️ Nuevo Access Token generado: ${activeToken}`)
+  }
+
+  // 4. Enviar email de entrega
   const emailResult = await sendDeliveryEmail({
     buyerEmail: event.customerEmail,
     productName: product.name || 'Tu Producto Digital',
-    token: tokenResult.token,
+    token: activeToken,
   })
 
   return {
     success: true,
-    duplicated: false,
+    duplicated: !!existingPurchase,
     purchaseId: purchase.id,
-    accessToken: tokenResult.token,
+    accessToken: activeToken,
     emailSent: emailResult.success,
   }
 }
