@@ -67,21 +67,30 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .single()
 
     if (error || !tokenData) {
-      return NextResponse.json({ error: 'Token no encontrado o inválido' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'El enlace de descarga no existe o ha sido modificado. Contactá a la creadora para solicitar ayuda.' }, 
+        { status: 404 }
+      )
     }
 
     // 2. Verificar expiración
     const now = new Date()
     const expiresAt = new Date(tokenData.expires_at)
     if (now > expiresAt) {
-      return NextResponse.json({ error: 'El enlace de descarga ha expirado' }, { status: 410 })
+      return NextResponse.json(
+        { error: 'El plazo de tiempo para descargar tu archivo ha expirado. Contactá a la creadora si perdiste tu archivo.' }, 
+        { status: 410 }
+      )
     }
 
     // 3. Verificar límite de descargas (5 máximo)
     const maxDownloads = 5
     const currentDownloads = tokenData.download_count ?? 0
     if (currentDownloads >= maxDownloads) {
-      return NextResponse.json({ error: 'Límite de descargas alcanzado' }, { status: 429 })
+      return NextResponse.json(
+        { error: `Has alcanzado el límite máximo de ${maxDownloads} descargas permitidas. Contactá a la creadora si perdiste tu archivo.` }, 
+        { status: 429 }
+      )
     }
 
     // Mapeo de compra y producto
@@ -95,7 +104,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const fileKey = product?.master_file_key
     if (!fileKey) {
-      return NextResponse.json({ error: 'El archivo asociado al producto no está disponible' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'El archivo asociado al producto no está disponible. Contactá a la creadora.' }, 
+        { status: 404 }
+      )
     }
 
     // 4. Descargar archivo máster desde Cloudflare R2
@@ -115,7 +127,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const byteArray = await r2Response.Body.transformToByteArray()
     const masterBuffer = Buffer.from(byteArray)
 
-    // 5. Estampar la marca forense en el PDF usando lib/forensics/stamps.ts
+    // 5. Estampar la marca forense en el PDF usando lib/forensics/stamp
     const purchaseId = purchase?.id || 'unknown-purchase'
     const buyerEmail = purchase?.buyer_email || 'unknown-buyer'
 
@@ -154,6 +166,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     })
   } catch (err: any) {
     console.error('❌ Error grave en la API de descarga:', err)
-    return NextResponse.json({ error: 'Error interno al generar la descarga', detalle: err.message }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Error interno al generar la descarga', detalle: err.message }, 
+      { status: 500 }
+    )
   }
 }

@@ -1,5 +1,6 @@
 // src/app/download/[token]/page.tsx
 export const dynamic = 'force-dynamic'
+
 import DownloadButton from '@/app/api/download/[token]/DownloadButton'
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
@@ -51,7 +52,7 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
     return (
       <ErrorState 
         title="Enlace no válido" 
-        message="El enlace de descarga no existe o ha sido modificado. Verificá la URL o contactá al soporte del creador." 
+        message="El enlace de descarga no existe o ha sido modificado. Verificá la URL o contactá a la creadora para solicitar ayuda." 
       />
     )
   }
@@ -62,8 +63,8 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
   if (now > expiresAt) {
     return (
       <ErrorState 
-        title="Enlace expirado" 
-        message="Tu enlace de descarga ha superado los 30 días de validez. Si necesitas acceder nuevamente a tu archivo, ponete en contacto con el soporte." 
+        title="Enlace expirado ⏰" 
+        message="El plazo de tiempo para descargar tu archivo ha expirado. Si perdiste tu archivo o necesitás acceder nuevamente, contactá a la creadora para solicitar ayuda." 
       />
     )
   }
@@ -75,8 +76,8 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
   if (currentDownloads >= maxDownloads) {
     return (
       <ErrorState 
-        title="Límite de descargas alcanzado" 
-        message={`Has alcanzado el límite máximo permitido (${maxDownloads} descargas) para este enlace de seguridad.`} 
+        title="Límite de descargas alcanzado ⚠️" 
+        message={`Has alcanzado el límite máximo de ${maxDownloads} descargas permitidas para este enlace. Contactá a la creadora si perdiste tu archivo.`} 
       />
     )
   }
@@ -92,7 +93,6 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
 
   const productName = product?.name || 'Tu Producto Digital'
   const productDescription = 'Gracias por tu compra. Tu archivo está listo para ser descargado.'
-  const fileKey = product?.master_file_key || '#'
 
   return (
     <div style={containerStyle}>
@@ -129,12 +129,12 @@ function ErrorState({ title, message }: { title: string; message: string }) {
     <div style={containerStyle}>
       <div style={{ ...cardStyle, borderColor: '#fca5a5' }}>
         <div style={{ ...badgeStyle, backgroundColor: '#fef2f2', color: '#dc2626' }}>
-          ❌ Error de acceso
+          ⚠️ Aviso de descarga
         </div>
         <h1 style={{ ...titleStyle, color: '#991b1b' }}>{title}</h1>
         <p style={descriptionStyle}>{message}</p>
         <div style={{ marginTop: '24px' }}>
-          <Link href="/" style={{ ...downloadButtonStyle, backgroundColor: '#4b5563', textDecoration: 'none' }}>
+          <Link href="/" style={{ ...downloadButtonStyle, backgroundColor: '#4b5563', textDecoration: 'none', textAlign: 'center' }}>
             Volver al inicio
           </Link>
         </div>
