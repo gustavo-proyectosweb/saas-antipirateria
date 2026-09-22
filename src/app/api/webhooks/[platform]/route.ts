@@ -6,6 +6,7 @@ import { normalizeWebhookPayload } from '@/lib/webhooks/mapper'
 import { verifyShopifyHmac } from '@/lib/webhooks/verifyShopify'
 import { verifyTiendanubeHmac } from '@/lib/webhooks/verifyTiendanube'
 import { processPurchase } from '@/lib/webhooks/processPurchase'
+import { logDeliveryFailure } from '@/lib/deliveryFailures'
 
 // Instanciación bajo demanda para evitar errores de compilación en Vercel
 function getSupabaseAdmin() {
@@ -59,7 +60,7 @@ export async function POST(
     // 4. Buscar el producto para obtener a cuál creadora pertenece
     const { data: product } = await supabaseAdmin
       .from('products')
-      .select('creator_id')
+      .select('id, creator_id, master_file_key')
       .eq('external_id', externalProductId)
       .single()
 
@@ -111,21 +112,67 @@ export async function POST(
       }
     }
 
-    // 7. Normalizar payload y procesar compra
+    // 7. Normalizar payload
     const normalizedEvent = normalizeWebhookPayload(platform, payload)
-    const result = await processPurchase(normalizedEvent)
 
-    return NextResponse.json({
-      received: true,
-      processed: result.success,
-      duplicated: result.duplicated || false,
-      data: normalizedEvent,
-    })
-  } catch (error) {
-    console.error('❌ Error procesando el webhook:', error)
+    // 8. EDGE CASE: Verificar si el producto tiene el archivo máster cargado
+    if (!product.master_file_key) {
+      console.warn(`⚠️ Producto ${product.id} no posee archivo máster asignado.`)
+
+      const emailToLog = (normalizedEvent as any).buyerEmail || (normalizedEvent as any).email || (normalizedEvent as any).buyer_email || 'comprador_desconocido'
+
+await logDeliveryFailure({
+  buyerEmail: emailToLog,
+  productId: product.id,
+  reason: 'MISSING_MASTER_FILE',
+  errorDetails: 'La compra fue registrada, pero el producto no tiene un archivo máster configurado en Cloudflare R2.',
+})
+
+      // Retornar 200 OK a la plataforma para no generar reintentos
+      return NextResponse.json({
+        received: true,
+        processed: false,
+        warning: 'El producto no tiene un archivo máster configurado.',
+      }, { status: 200 })
+    }
+
+    // 9. Procesar compra con captura segura de excepciones
+    try {
+      const result = await processPurchase(normalizedEvent)
+
+      return NextResponse.json({
+        received: true,
+        processed: result.success,
+        duplicated: result.duplicated || false,
+        data: normalizedEvent,
+      })
+    } catch (procError: any) {
+      console.error('❌ Error procesando la entrega con processPurchase:', procError)
+
+      const emailToLog = (normalizedEvent as any).buyerEmail || (normalizedEvent as any).email || (normalizedEvent as any).buyer_email || 'comprador_desconocido'
+
+await logDeliveryFailure({
+  buyerEmail: emailToLog,
+  productId: product.id,
+  reason: 'EMAIL_SEND_FAILED',
+  errorDetails: procError.message || 'Error durante la generación de token o envío de correo.',
+})
+
+      // Retornar 200 OK indicando recepción exitosa pero registrando el fallo
+      return NextResponse.json({
+        received: true,
+        processed: false,
+        error_logged: true,
+      }, { status: 200 })
+    }
+
+  } catch (error: any) {
+    console.error('❌ Error no controlado en el webhook:', error)
+    
+    // Retornar 200 para prevenir bloqueos de webhook en la tienda externa
     return NextResponse.json(
-      { error: 'Error interno al procesar el webhook' },
-      { status: 500 }
+      { received: true, error: 'Error interno mitigado', details: error.message },
+      { status: 200 }
     )
   }
 }
