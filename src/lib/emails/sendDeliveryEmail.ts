@@ -2,7 +2,6 @@
 import { Resend } from 'resend'
 import DeliveryEmail from '../../../emails/DeliveryEmail'
 
-// Instanciación bajo demanda para evitar errores durante el build
 function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
@@ -35,7 +34,7 @@ export async function sendDeliveryEmail({
 
   try {
     const { data, error } = await resend.emails.send({
-      from: 'Entregas <onboarding@resend.dev>', // Dominio de prueba predeterminado de Resend
+      from: 'Entregas <onboarding@resend.dev>',
       to: buyerEmail,
       subject: `Tu acceso a ${productName}`,
       react: DeliveryEmail({
@@ -53,7 +52,6 @@ export async function sendDeliveryEmail({
     console.log('✉️ Email enviado con éxito a:', buyerEmail, 'ID:', data?.id)
     return { success: true, data }
   } catch (err) {
-    // Capturamos el error para NO romper el flujo del webhook
     console.error('❌ Error inesperado intentando enviar el email:', err)
     return { success: false, error: err }
   }

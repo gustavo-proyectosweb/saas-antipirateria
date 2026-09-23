@@ -1,3 +1,4 @@
+// src/lib/supabase/server.ts
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -19,6 +20,7 @@ export async function createClient() {
             )
           } catch {
             // El método `setAll` fue llamado desde un Server Component.
+            // Ignorado si la respuesta ya fue enviada o no se permite modificar cookies.
           }
         },
       },

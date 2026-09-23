@@ -16,14 +16,13 @@ export function verifyTiendanubeHmac(
   }
 
   try {
-    // Tiendanube requiere codificación HEXADECIMAL (.digest('hex'))
     const generatedHmac = crypto
       .createHmac('sha256', secret)
       .update(rawBody, 'utf8')
       .digest('hex')
 
-    const generatedBuffer = Buffer.from(generatedHmac)
-    const headerBuffer = Buffer.from(hmacHeader)
+    const generatedBuffer = Buffer.from(generatedHmac, 'utf8')
+    const headerBuffer = Buffer.from(hmacHeader, 'utf8')
 
     if (generatedBuffer.length !== headerBuffer.length) {
       return false

@@ -1,9 +1,12 @@
+// src/lib/forensics/stamp.ts
 import {
   injectForensicMetadata,
   injectVectorForensicMark,
   extractForensicMetadata,
   ForensicPayload,
 } from './metadata'
+
+export type { ForensicPayload }
 
 export interface StampResult {
   stampedBuffer: Buffer
@@ -23,17 +26,14 @@ export async function stampPdf(
     buyerEmail,
   }
 
-  // 1. Inyectar metadatos forenses en estructuras internas (Capa 1)
   const pdfWithMetadata = await injectForensicMetadata(masterBuffer, payload)
-
-  // 2. Aplicar micro-variación vectorial determinística imperceptible (Capa 2)
   const finalStampedBuffer = await injectVectorForensicMark(pdfWithMetadata, purchaseId)
 
   return finalStampedBuffer
 }
 
 /**
- * Decodifica la marca del PDF para usar en el Inspector Forense (Módulo C)
+ * Decodifica la marca del PDF para usar en el Inspector Forense
  */
 export async function decodeStamp(
   pdfBuffer: Buffer

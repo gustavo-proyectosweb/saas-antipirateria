@@ -1,3 +1,4 @@
+// src/lib/storage/r2.ts
 import {
   S3Client,
   PutObjectCommand,
@@ -5,7 +6,11 @@ import {
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
+let r2ClientInstance: S3Client | null = null
+
 function getR2Client(): S3Client {
+  if (r2ClientInstance) return r2ClientInstance
+
   const endpoint = process.env.R2_ENDPOINT
   const accessKeyId = process.env.R2_ACCESS_KEY_ID
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY
@@ -14,7 +19,7 @@ function getR2Client(): S3Client {
     throw new Error('❌ Faltan credenciales de R2 (endpoint, accessKeyId o secretAccessKey) en .env.local')
   }
 
-  return new S3Client({
+  r2ClientInstance = new S3Client({
     region: 'auto',
     endpoint: endpoint,
     credentials: {
@@ -22,6 +27,8 @@ function getR2Client(): S3Client {
       secretAccessKey,
     },
   })
+
+  return r2ClientInstance
 }
 
 function getBucketName(): string {

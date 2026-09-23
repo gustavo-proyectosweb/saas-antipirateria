@@ -11,21 +11,18 @@ export function verifyShopifyHmac(
   hmacHeader: string | null,
   secret: string
 ): boolean {
-  // Si no hay firma en el header o no se proporcionó el secreto de la creadora, rechazamos
   if (!hmacHeader || !secret) {
     return false
   }
 
   try {
-    // Calculamos el hash HMAC-SHA256 codificado en Base64
     const generatedHmac = crypto
       .createHmac('sha256', secret)
       .update(rawBody, 'utf8')
       .digest('base64')
 
-    // Comparamos los hashes de forma segura usando timingSafeEqual
-    const generatedBuffer = Buffer.from(generatedHmac)
-    const headerBuffer = Buffer.from(hmacHeader)
+    const generatedBuffer = Buffer.from(generatedHmac, 'utf8')
+    const headerBuffer = Buffer.from(hmacHeader, 'utf8')
 
     if (generatedBuffer.length !== headerBuffer.length) {
       return false

@@ -1,5 +1,6 @@
 // src/lib/tokens/generateToken.ts
 import { createClient } from '@supabase/supabase-js'
+import * as crypto from 'crypto'
 
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -29,14 +30,11 @@ export async function createAccessToken(
 ): Promise<AccessTokenResult> {
   const supabaseAdmin = getSupabaseAdmin()
 
-  // 1. Generar token UUID v4 criptográficamente seguro
   const token = crypto.randomUUID()
 
-  // 2. Calcular fecha de expiración (ej. 30 días a partir de hoy)
   const expiresAt = new Date()
   expiresAt.setDate(expiresAt.getDate() + expirationDays)
 
-  // 3. Insertar el token en la base de datos
   const { data, error } = await supabaseAdmin
     .from('access_tokens')
     .insert({

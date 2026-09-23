@@ -12,11 +12,18 @@ function getSupabaseAdmin() {
   return createClient(url, key)
 }
 
+export type FailureReason =
+  | 'MISSING_MASTER_FILE'
+  | 'EMAIL_SEND_FAILED'
+  | 'TOKEN_GENERATION_FAILED'
+  | 'PRODUCT_NOT_FOUND'
+  | 'UNKNOWN'
+
 interface LogFailureParams {
   purchaseId?: string | null
   buyerEmail: string
   productId?: string | null
-  reason: 'MISSING_MASTER_FILE' | 'EMAIL_SEND_FAILED' | 'TOKEN_GENERATION_FAILED' | 'UNKNOWN'
+  reason: FailureReason
   errorDetails?: string
 }
 
