@@ -2,16 +2,16 @@
 
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
+import { analyzeForensicFile, ForensicResult } from './actions'
+import { maskEmail, formatDate } from '@/lib/utils'
 
 export default function InspectorPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
+  const [result, setResult] = useState<ForensicResult | null>(null)
 
-  // Manejadores para arrastrar y soltar (Drag & Drop)
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
@@ -34,7 +34,7 @@ export default function InspectorPage() {
       const file = files[0]
       if (file.type === 'application/pdf') {
         setSelectedFile(file)
-        setAnalysisResult(null)
+        setResult(null)
       } else {
         alert('Por favor, selecciona un archivo en formato PDF.')
       }
@@ -47,31 +47,32 @@ export default function InspectorPage() {
       const file = files[0]
       if (file.type === 'application/pdf') {
         setSelectedFile(file)
-        setAnalysisResult(null)
+        setResult(null)
       } else {
         alert('Por favor, selecciona un archivo en formato PDF.')
       }
     }
   }
 
-  // Simulación de análisis (por ahora no conecta con el backend)
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!selectedFile) return
 
     setIsAnalyzing(true)
-    setAnalysisResult(null)
+    setResult(null)
 
-    // Simulamos un retraso de 2.5 segundos para mostrar el estado "Analizando..."
-    setTimeout(() => {
-      setIsAnalyzing(false)
-      setAnalysisResult('Simulación completada. El análisis en backend se conectará en la siguiente tarea.')
-    }, 2500)
+    const formData = new FormData()
+    formData.append('file', selectedFile)
+
+    const response = await analyzeForensicFile(formData)
+
+    setResult(response)
+    setIsAnalyzing(false)
   }
 
   const handleReset = () => {
     setSelectedFile(null)
     setIsAnalyzing(false)
-    setAnalysisResult(null)
+    setResult(null)
   }
 
   return (
@@ -82,7 +83,7 @@ export default function InspectorPage() {
           Inspector Forense de PDF 🔍
         </h1>
         <p className="text-sm text-gray-400">
-          Sube un PDF para analizar sus metadatos, firmas digitales y marcas de agua invisibles.
+          Sube un PDF para analizar sus metadatos, firmas digitales y rastrear al comprador original.
         </p>
       </div>
 
@@ -161,7 +162,7 @@ export default function InspectorPage() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   ></path>
                 </svg>
-                <span>Analizando...</span>
+                <span>Analizando PDF...</span>
               </>
             ) : (
               <span>Analizar PDF</span>
@@ -178,7 +179,7 @@ export default function InspectorPage() {
         </div>
       )}
 
-      {/* ÁREA DE RESULTADOS */}
+      {/* Carga durante el análisis */}
       {isAnalyzing && (
         <div className="bg-gray-950 border border-gray-800 p-6 rounded-xl animate-pulse space-y-3">
           <div className="h-4 bg-gray-800 rounded w-1/4"></div>
@@ -187,13 +188,71 @@ export default function InspectorPage() {
         </div>
       )}
 
-      {analysisResult && (
-        <div className="bg-gray-950 border border-indigo-500/30 p-6 rounded-xl space-y-3">
-          <h2 className="text-lg font-semibold text-white flex items-center space-x-2">
-            <span>📊</span>
-            <span>Resultado del Análisis</span>
-          </h2>
-          <p className="text-sm text-gray-300">{analysisResult}</p>
+      {/* ÁREA DE RESULTADOS */}
+      {result && (
+        <div
+          className={`p-6 rounded-xl border ${
+            result.stamped && result.buyerEmail
+              ? 'bg-gray-950 border-green-500/30'
+              : result.stamped
+              ? 'bg-gray-950 border-amber-500/30'
+              : 'bg-gray-950 border-red-500/30'
+          } space-y-4`}
+        >
+          <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+            <h2 className="text-lg font-semibold text-white flex items-center space-x-2">
+              <span>{result.stamped ? '🛡️' : '⚠️'}</span>
+              <span>Resultado del Análisis</span>
+            </h2>
+            <span
+              className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${
+                result.stamped && result.buyerEmail
+                  ? 'bg-green-900/40 text-green-300 border-green-500/30'
+                  : result.stamped
+                  ? 'bg-amber-900/40 text-amber-300 border-amber-500/30'
+                  : 'bg-red-900/40 text-red-300 border-red-500/30'
+              }`}
+            >
+              {result.stamped ? 'Marca Detectada' : 'Sin Marca Forense'}
+            </span>
+          </div>
+
+          <p className="text-sm text-gray-300">{result.message}</p>
+
+          {/* Ficha técnica si se encontró la marca y la compra */}
+          {result.stamped && (
+            <div className="bg-gray-900/60 rounded-lg p-4 space-y-2 border border-gray-800 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <span className="text-xs text-gray-500 block uppercase font-bold">Comprador</span>
+                  <span className="text-white font-medium">
+                    {result.buyerEmail ? maskEmail(result.buyerEmail) : 'No disponible'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-xs text-gray-500 block uppercase font-bold">Producto</span>
+                  <span className="text-white font-medium">
+                    {result.productName || 'No disponible'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-xs text-gray-500 block uppercase font-bold">ID de Compra</span>
+                  <span className="text-gray-300 font-mono text-xs">
+                    {result.purchaseId || 'No disponible'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-xs text-gray-500 block uppercase font-bold">Fecha de Compra</span>
+                  <span className="text-gray-300">
+                    {result.purchaseDate ? formatDate(result.purchaseDate) : 'No disponible'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
