@@ -1,17 +1,22 @@
+// src/app/(auth)/signup/page.tsx
+
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { signup } from '../actions'
 
 export default function SignupPage() {
   const [error, setError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
 
   async function handleSubmit(formData: FormData) {
     setError(null)
-    const result = await signup(formData)
-    if (result?.error) {
-      setError(result.error)
-    }
+    startTransition(async () => {
+      const result = await signup(formData)
+      if (result?.error) {
+        setError(result.error)
+      }
+    })
   }
 
   return (
@@ -34,7 +39,8 @@ export default function SignupPage() {
               type="text"
               name="name"
               required
-              className="mt-1 w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500"
+              disabled={isPending}
+              className="mt-1 w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
             />
           </div>
 
@@ -44,7 +50,8 @@ export default function SignupPage() {
               type="email"
               name="email"
               required
-              className="mt-1 w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500"
+              disabled={isPending}
+              className="mt-1 w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
             />
           </div>
 
@@ -55,15 +62,17 @@ export default function SignupPage() {
               name="password"
               required
               minLength={6}
-              className="mt-1 w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500"
+              disabled={isPending}
+              className="mt-1 w-full p-2 border border-gray-300 rounded focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full bg-indigo-600 text-white p-2 rounded hover:bg-indigo-700 font-medium"
+            disabled={isPending}
+            className="w-full bg-indigo-600 text-white p-2 rounded hover:bg-indigo-700 font-medium disabled:opacity-50 transition"
           >
-            Registrarme
+            {isPending ? 'Registrando...' : 'Registrarme'}
           </button>
         </form>
       </div>

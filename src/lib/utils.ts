@@ -9,7 +9,15 @@ export function maskEmail(email: string): string {
 
   const [localPart, domain] = email.split('@')
 
-  if (localPart.length <= 2) {
+  if (!localPart || localPart.length === 0) {
+    return `***@${domain}`
+  }
+
+  if (localPart.length === 1) {
+    return `${localPart}***@${domain}`
+  }
+
+  if (localPart.length === 2) {
     return `${localPart[0]}***@${domain}`
   }
 
@@ -19,12 +27,14 @@ export function maskEmail(email: string): string {
 }
 
 /**
- * Formatea una fecha a una representación legible.
+ * Formatea una fecha a una representación legible en español (Argentina).
  */
 export function formatDate(dateString: string | null): string {
   if (!dateString) return 'Sin descargas aún'
-  
+
   const date = new Date(dateString)
+  if (isNaN(date.getTime())) return 'Fecha no válida'
+
   return new Intl.DateTimeFormat('es-AR', {
     day: '2-digit',
     month: '2-digit',

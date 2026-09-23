@@ -1,11 +1,13 @@
-import type { NextConfig } from "next";
+// next.config.mjs
 
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: '50mb',
     },
-  }
+  },
+  serverExternalPackages: ['pdf-lib'],
 };
 
-module.exports = nextConfig;
+export default nextConfig;
