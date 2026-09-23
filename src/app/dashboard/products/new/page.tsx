@@ -1,17 +1,18 @@
+// src/app/dashboard/products/new/page.tsx
+
 'use client'
 
 import { useActionState } from 'react'
-import { createProduct, uploadMasterFile } from '../actions'
+import { createProduct, FormState } from '../actions'
 import Link from 'next/link'
 
-const initialState = {
+const initialState: FormState = {
   message: '',
   errors: {},
 }
 
 export default function NewProductPage() {
-  const [state, formAction] = useActionState(createProduct, initialState)
-  const [uploadState, uploadFormAction] = useActionState(uploadMasterFile, initialState)
+  const [state, formAction, isPending] = useActionState(createProduct, initialState)
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -25,7 +26,6 @@ export default function NewProductPage() {
         </Link>
       </div>
 
-      {/* Formulario Principal de Producto */}
       <div className="bg-gray-950 border border-gray-800 rounded-xl p-6 shadow-lg">
         <h2 className="text-lg font-semibold text-gray-200 mb-4 border-b border-gray-800 pb-2">
           1. Datos Básicos del Producto
@@ -47,7 +47,8 @@ export default function NewProductPage() {
               name="name"
               placeholder="Ej: Agenda Imprimible 2026 - Flores"
               required
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              disabled={isPending}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
             />
             {state?.errors?.name && (
               <p className="mt-1 text-xs text-red-400">{state.errors.name[0]}</p>
@@ -62,7 +63,8 @@ export default function NewProductPage() {
               name="platform"
               required
               defaultValue="tiendanube"
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              disabled={isPending}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
             >
               <option value="tiendanube">Tiendanube</option>
               <option value="shopify">Shopify</option>
@@ -81,7 +83,8 @@ export default function NewProductPage() {
               name="externalId"
               placeholder="Ej: 12345678"
               required
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              disabled={isPending}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
             />
             <p className="text-xs text-gray-500 mt-1">
               Identificador numérico o alfanumérico en Tiendanube o Shopify.
@@ -94,9 +97,10 @@ export default function NewProductPage() {
           <div className="pt-4 border-t border-gray-800 flex justify-end">
             <button
               type="submit"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition"
+              disabled={isPending}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition disabled:opacity-50"
             >
-              Guardar Producto
+              {isPending ? 'Guardando...' : 'Guardar Producto'}
             </button>
           </div>
         </form>

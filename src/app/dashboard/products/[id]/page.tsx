@@ -1,19 +1,20 @@
+// src/app/dashboard/products/[id]/page.tsx
+
 'use client'
 
 import { useActionState, use } from 'react'
-import { uploadMasterFile } from '../actions'
+import { uploadMasterFile, FormState } from '../actions'
 import Link from 'next/link'
 
-const initialState = {
+const initialState: FormState = {
   message: '',
   success: false,
   fileKey: '',
 }
 
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  // Desempaquetar la promesa de params con use()
   const resolvedParams = use(params)
-  const [state, formAction] = useActionState(uploadMasterFile, initialState)
+  const [state, formAction, isPending] = useActionState(uploadMasterFile, initialState)
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -59,7 +60,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
               name="masterFile"
               accept="application/pdf"
               required
-              className="w-full text-sm text-gray-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer bg-gray-900 border border-gray-700 rounded-lg p-2"
+              disabled={isPending}
+              className="w-full text-sm text-gray-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer bg-gray-900 border border-gray-700 rounded-lg p-2 disabled:opacity-50"
             />
             <p className="text-xs text-gray-500 mt-1">Solo archivos .pdf (Máximo 50 MB).</p>
           </div>
@@ -67,9 +69,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           <div className="pt-4 border-t border-gray-800 flex justify-end">
             <button
               type="submit"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition"
+              disabled={isPending}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg transition disabled:opacity-50"
             >
-              Subir PDF a R2
+              {isPending ? 'Subiendo PDF...' : 'Subir PDF a R2'}
             </button>
           </div>
         </form>

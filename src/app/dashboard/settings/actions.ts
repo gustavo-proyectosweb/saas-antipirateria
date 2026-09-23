@@ -1,19 +1,9 @@
 // src/app/dashboard/settings/actions.ts
+
 'use server'
 
-import { createClient } from '@supabase/supabase-js'
-
-// Usamos el cliente admin con Service Role para gestionar credenciales en el servidor
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url || !key) {
-    throw new Error('Faltan variables de entorno requeridas para Supabase Admin')
-  }
-
-  return createClient(url, key)
-}
+import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
 
 export async function saveStoreConnection(formData: FormData) {
   const platform = formData.get('platform') as string
@@ -24,21 +14,31 @@ export async function saveStoreConnection(formData: FormData) {
     return { success: false, error: 'La plataforma y el Webhook Secret son obligatorios.' }
   }
 
-  const supabaseAdmin = getSupabaseAdmin()
+  const supabase = await createClient()
 
-  // 1. Para el MVP, obtenemos el primer creador registrado
-  const { data: creator, error: creatorError } = await supabaseAdmin
+  // 1. Obtener el usuario autenticado
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    return { success: false, error: 'No estás autenticado para realizar esta acción.' }
+  }
+
+  // 2. Obtener el perfil de la creadora
+  const { data: creator, error: creatorError } = await supabase
     .from('creators')
     .select('id')
-    .limit(1)
+    .eq('user_id', user.id)
     .single()
 
   if (creatorError || !creator) {
-    return { success: false, error: 'No se encontró el perfil de creador.' }
+    return { success: false, error: 'No se encontró el perfil de creadora asignado.' }
   }
 
-  // 2. Guardar o actualizar (upsert) en store_connections
-  const { error: upsertError } = await supabaseAdmin
+  // 3. Upsert de la conexión
+  const { error: upsertError } = await supabase
     .from('store_connections')
     .upsert(
       {
@@ -56,26 +56,33 @@ export async function saveStoreConnection(formData: FormData) {
     return { success: false, error: 'Error al guardar las credenciales en la base de datos.' }
   }
 
+  revalidatePath('/dashboard/settings')
   return { success: true }
 }
 
 export async function getStoreConnection(platform: string) {
-  const supabaseAdmin = getSupabaseAdmin()
+  const supabase = await createClient()
 
-  const { data: creator } = await supabaseAdmin
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return null
+
+  const { data: creator } = await supabase
     .from('creators')
     .select('id')
-    .limit(1)
+    .eq('user_id', user.id)
     .single()
 
   if (!creator) return null
 
-  const { data: connection } = await supabaseAdmin
+  const { data: connection } = await supabase
     .from('store_connections')
     .select('platform, external_store_id, webhook_secret')
     .eq('creator_id', creator.id)
     .eq('platform', platform)
-    .single()
+    .maybeSingle()
 
   return connection
 }

@@ -1,4 +1,5 @@
 // src/app/download/[token]/page.tsx
+
 export const dynamic = 'force-dynamic'
 
 import DownloadButton from '@/app/api/download/[token]/DownloadButton'
@@ -26,7 +27,6 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
   const { token } = await params
   const supabaseAdmin = getSupabaseAdmin()
 
-  // 1. Buscar token con columnas garantizadas en access_tokens, purchases y products
   const { data: tokenData, error } = await supabaseAdmin
     .from('access_tokens')
     .select(`
@@ -47,47 +47,43 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
     .eq('token', token)
     .single()
 
-  // 2. Manejo de error: Token no encontrado o error en BD
   if (error || !tokenData) {
     return (
-      <ErrorState 
-        title="Enlace no válido" 
-        message="El enlace de descarga no existe o ha sido modificado. Verificá la URL o contactá a la creadora para solicitar ayuda." 
+      <ErrorState
+        title="Enlace no válido"
+        message="El enlace de descarga no existe o ha sido modificado. Verificá la URL o contactá a la creadora para solicitar ayuda."
       />
     )
   }
 
-  // 3. Manejo de error: Token expirado
   const now = new Date()
   const expiresAt = new Date(tokenData.expires_at)
   if (now > expiresAt) {
     return (
-      <ErrorState 
-        title="Enlace expirado ⏰" 
-        message="El plazo de tiempo para descargar tu archivo ha expirado. Si perdiste tu archivo o necesitás acceder nuevamente, contactá a la creadora para solicitar ayuda." 
+      <ErrorState
+        title="Enlace expirado ⏰"
+        message="El plazo de tiempo para descargar tu archivo ha expirado. Si perdiste tu archivo o necesitás acceder nuevamente, contactá a la creadora para solicitar ayuda."
       />
     )
   }
 
-  // 4. Manejo de error: Límite de descargas superado (Límite por defecto: 5 descargas)
   const maxDownloads = 5
   const currentDownloads = tokenData.download_count ?? 0
 
   if (currentDownloads >= maxDownloads) {
     return (
-      <ErrorState 
-        title="Límite de descargas alcanzado ⚠️" 
-        message={`Has alcanzado el límite máximo de ${maxDownloads} descargas permitidas para este enlace. Contactá a la creadora si perdiste tu archivo.`} 
+      <ErrorState
+        title="Límite de descargas alcanzado ⚠️"
+        message={`Has alcanzado el límite máximo de ${maxDownloads} descargas permitidas para este enlace. Contactá a la creadora si perdiste tu archivo.`}
       />
     )
   }
 
-  // Mapeo seguro de los datos de la compra y producto
-  const purchase = Array.isArray(tokenData.purchases) 
-    ? tokenData.purchases[0] 
+  const purchase = Array.isArray(tokenData.purchases)
+    ? tokenData.purchases[0]
     : tokenData.purchases
 
-  const product = purchase?.products 
+  const product = purchase?.products
     ? (Array.isArray(purchase.products) ? purchase.products[0] : purchase.products)
     : null
 
@@ -98,7 +94,7 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
     <div style={containerStyle}>
       <div style={cardStyle}>
         <div style={badgeStyle}>Acceso Válido</div>
-        
+
         <h1 style={titleStyle}>{productName}</h1>
         <p style={descriptionStyle}>{productDescription}</p>
 

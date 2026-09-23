@@ -1,3 +1,5 @@
+// src/app/(dashboard)/layout.tsx
+
 import Link from 'next/link'
 import { ReactNode } from 'react'
 
@@ -22,16 +24,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               📦 Productos
             </Link>
             <Link
-              href="/dashboard/history"
+              href="/dashboard/failures"
               className="block px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-800 text-gray-300 hover:text-white transition"
             >
-              📜 Historial
+              ⚠️ Fallos de Entrega
             </Link>
             <Link
-              href="/dashboard/forensic-inspector"
+              href="/dashboard/settings"
               className="block px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-800 text-gray-300 hover:text-white transition"
             >
-              🔍 Inspector Forense
+              ⚙️ Configuración
             </Link>
           </nav>
         </div>
