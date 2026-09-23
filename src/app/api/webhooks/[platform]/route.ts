@@ -1,14 +1,13 @@
 // src/app/api/webhooks/[platform]/route.ts
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { SupportedPlatform } from '@/lib/webhooks/types'
+import { SupportedPlatform, NormalizedOrderEvent } from '@/lib/webhooks/types'
 import { normalizeWebhookPayload } from '@/lib/webhooks/mapper'
 import { verifyShopifyHmac } from '@/lib/webhooks/verifyShopify'
 import { verifyTiendanubeHmac } from '@/lib/webhooks/verifyTiendanube'
 import { processPurchase } from '@/lib/webhooks/processPurchase'
 import { logDeliveryFailure } from '@/lib/deliveryFailures'
 
-// Instanciación bajo demanda para evitar errores de compilación en Vercel
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -36,16 +35,26 @@ export async function POST(
       )
     }
 
-    // 2. Obtener el cuerpo en texto crudo y parsear el payload
+    // 2. Obtener el cuerpo en texto crudo y parsear el JSON de forma segura
     const rawBody = await request.text()
-    const payload = JSON.parse(rawBody)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let payload: any
+
+    try {
+      payload = JSON.parse(rawBody)
+    } catch {
+      return NextResponse.json(
+        { error: 'El cuerpo de la solicitud no es un JSON válido' },
+        { status: 400 }
+      )
+    }
 
     // 3. Extraer el external_id del producto según la plataforma
     let externalProductId = ''
     if (platform === 'shopify') {
-      externalProductId = String(payload.line_items?.[0]?.product_id || '')
+      externalProductId = String(payload.line_items?.[0]?.product_id || payload.line_items?.[0]?.variant_id || '')
     } else if (platform === 'tiendanube') {
-      externalProductId = String(payload.products?.[0]?.product_id || '')
+      externalProductId = String(payload.products?.[0]?.product_id || payload.products?.[0]?.variant_id || '')
     }
 
     if (!externalProductId) {
@@ -113,27 +122,30 @@ export async function POST(
     }
 
     // 7. Normalizar payload
-    const normalizedEvent = normalizeWebhookPayload(platform, payload)
+    const normalizedEvent: NormalizedOrderEvent = normalizeWebhookPayload(platform, payload)
 
     // 8. EDGE CASE: Verificar si el producto tiene el archivo máster cargado
     if (!product.master_file_key) {
       console.warn(`⚠️ Producto ${product.id} no posee archivo máster asignado.`)
 
-      const emailToLog = (normalizedEvent as any).buyerEmail || (normalizedEvent as any).email || (normalizedEvent as any).buyer_email || 'comprador_desconocido'
+      const emailToLog = normalizedEvent.customerEmail || 'comprador_desconocido'
 
-await logDeliveryFailure({
-  buyerEmail: emailToLog,
-  productId: product.id,
-  reason: 'MISSING_MASTER_FILE',
-  errorDetails: 'La compra fue registrada, pero el producto no tiene un archivo máster configurado en Cloudflare R2.',
-})
+      await logDeliveryFailure({
+        buyerEmail: emailToLog,
+        productId: product.id,
+        reason: 'MISSING_MASTER_FILE',
+        errorDetails: 'La compra fue registrada, pero el producto no tiene un archivo máster configurado en Cloudflare R2.',
+      })
 
-      // Retornar 200 OK a la plataforma para no generar reintentos
-      return NextResponse.json({
-        received: true,
-        processed: false,
-        warning: 'El producto no tiene un archivo máster configurado.',
-      }, { status: 200 })
+      // Retornar 200 OK a la plataforma para prevenir reintentos de red innecesarios
+      return NextResponse.json(
+        {
+          received: true,
+          processed: false,
+          warning: 'El producto no tiene un archivo máster configurado.',
+        },
+        { status: 200 }
+      )
     }
 
     // 9. Procesar compra con captura segura de excepciones
@@ -146,32 +158,34 @@ await logDeliveryFailure({
         duplicated: result.duplicated || false,
         data: normalizedEvent,
       })
-    } catch (procError: any) {
+    } catch (procError: unknown) {
+      const errorMessage = procError instanceof Error ? procError.message : 'Error desconocido'
       console.error('❌ Error procesando la entrega con processPurchase:', procError)
 
-      const emailToLog = (normalizedEvent as any).buyerEmail || (normalizedEvent as any).email || (normalizedEvent as any).buyer_email || 'comprador_desconocido'
+      const emailToLog = normalizedEvent.customerEmail || 'comprador_desconocido'
 
-await logDeliveryFailure({
-  buyerEmail: emailToLog,
-  productId: product.id,
-  reason: 'EMAIL_SEND_FAILED',
-  errorDetails: procError.message || 'Error durante la generación de token o envío de correo.',
-})
+      await logDeliveryFailure({
+        buyerEmail: emailToLog,
+        productId: product.id,
+        reason: 'EMAIL_SEND_FAILED',
+        errorDetails: errorMessage || 'Error durante la generación de token o envío de correo.',
+      })
 
-      // Retornar 200 OK indicando recepción exitosa pero registrando el fallo
-      return NextResponse.json({
-        received: true,
-        processed: false,
-        error_logged: true,
-      }, { status: 200 })
+      return NextResponse.json(
+        {
+          received: true,
+          processed: false,
+          error_logged: true,
+        },
+        { status: 200 }
+      )
     }
-
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Error no controlado'
     console.error('❌ Error no controlado en el webhook:', error)
-    
-    // Retornar 200 para prevenir bloqueos de webhook en la tienda externa
+
     return NextResponse.json(
-      { received: true, error: 'Error interno mitigado', details: error.message },
+      { received: true, error: 'Error interno mitigado', details: errorMessage },
       { status: 200 }
     )
   }

@@ -22,7 +22,7 @@ function getR2Client() {
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY
 
   if (!accountId || !accessKeyId || !secretAccessKey) {
-    throw new Error('Faltan credenciales de Cloudflare R2 en .env.local')
+    throw new Error('Faltan credenciales de Cloudflare R2 en las variables de entorno')
   }
 
   return new S3Client({
@@ -42,9 +42,8 @@ interface RouteParams {
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
-  // --- APLICAR RATE LIMIT POR IP ---
+  // 1. Aplicar Rate Limit por IP
   const clientIp = getClientIp(request)
-  // Límite: Máximo 10 peticiones por minuto por IP
   const { isRateLimited } = checkRateLimit(clientIp, 10, 60 * 1000)
 
   if (isRateLimited) {
@@ -54,12 +53,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       { status: 429 }
     )
   }
-  
+
   const { token } = await params
   const supabaseAdmin = getSupabaseAdmin()
 
   try {
-    // 1. Validar token
+    // 2. Validar token en la base de datos
     const { data: tokenData, error } = await supabaseAdmin
       .from('access_tokens')
       .select(`
@@ -82,49 +81,51 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (error || !tokenData) {
       return NextResponse.json(
-        { error: 'El enlace de descarga no existe o ha sido modificado. Contactá a la creadora para solicitar ayuda.' }, 
+        { error: 'El enlace de descarga no existe o ha sido modificado. Contactá a la creadora para solicitar ayuda.' },
         { status: 404 }
       )
     }
 
-    // 2. Verificar expiración
+    // 3. Verificar fecha de expiración
     const now = new Date()
     const expiresAt = new Date(tokenData.expires_at)
     if (now > expiresAt) {
       return NextResponse.json(
-        { error: 'El plazo de tiempo para descargar tu archivo ha expirado. Contactá a la creadora si perdiste tu archivo.' }, 
+        { error: 'El plazo de tiempo para descargar tu archivo ha expirado. Contactá a la creadora si perdiste tu archivo.' },
         { status: 410 }
       )
     }
 
-    // 3. Verificar límite de descargas (5 máximo)
+    // 4. Verificar límite de descargas (máximo 5)
     const maxDownloads = 5
     const currentDownloads = tokenData.download_count ?? 0
     if (currentDownloads >= maxDownloads) {
       return NextResponse.json(
-        { error: `Has alcanzado el límite máximo de ${maxDownloads} descargas permitidas. Contactá a la creadora si perdiste tu archivo.` }, 
+        { error: `Has alcanzado el límite máximo de ${maxDownloads} descargas permitidas. Contactá a la creadora si perdiste tu archivo.` },
         { status: 429 }
       )
     }
 
-    // Mapeo de compra y producto
+    // Extraer compra y producto de forma segura
     const purchase = Array.isArray(tokenData.purchases)
       ? tokenData.purchases[0]
       : tokenData.purchases
 
     const product = purchase?.products
-      ? (Array.isArray(purchase.products) ? purchase.products[0] : purchase.products)
+      ? Array.isArray(purchase.products)
+        ? purchase.products[0]
+        : purchase.products
       : null
 
     const fileKey = product?.master_file_key
     if (!fileKey) {
       return NextResponse.json(
-        { error: 'El archivo asociado al producto no está disponible. Contactá a la creadora.' }, 
+        { error: 'El archivo asociado al producto no está disponible. Contactá a la creadora.' },
         { status: 404 }
       )
     }
 
-    // 4. Descargar archivo máster desde Cloudflare R2
+    // 5. Descargar archivo máster desde Cloudflare R2
     const r2 = getR2Client()
     const bucketName = process.env.R2_BUCKET_NAME || 'printables-vault'
 
@@ -135,39 +136,39 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const r2Response = await r2.send(getObjectCmd)
     if (!r2Response.Body) {
-      throw new Error('El archivo recuperado de R2 está vacío')
+      throw new Error('El archivo recuperado de Cloudflare R2 está vacío')
     }
 
     const byteArray = await r2Response.Body.transformToByteArray()
     const masterBuffer = Buffer.from(byteArray)
 
-    // 5. Estampar la marca forense en el PDF usando lib/forensics/stamp
+    // 6. Estampar la marca forense en el PDF (Capa 1 + Capa 2)
     const purchaseId = purchase?.id || 'unknown-purchase'
     const buyerEmail = purchase?.buyer_email || 'unknown-buyer'
 
-    console.log(`🔒 Aplicando marca forense (capa 1 + capa 2) para ${buyerEmail}...`)
+    console.log(`🔒 Aplicando marca forense para ${buyerEmail}...`)
     const finalBuffer = await stampPdf(masterBuffer, purchaseId, buyerEmail)
 
-    // 6. Incrementar contador de descargas
+    // 7. Actualizar contador de descargas
     await supabaseAdmin
       .from('access_tokens')
       .update({ download_count: currentDownloads + 1 })
       .eq('id', tokenData.id)
 
-    // Registrar en forensic_marks
+    // Registrar en auditoría de descargas (forensic_marks)
     try {
       await supabaseAdmin.from('forensic_marks').insert({
         token_id: tokenData.id,
         purchase_id: purchaseId,
         downloaded_at: new Date().toISOString(),
       })
-    } catch (_) {
-      // Ignorar si la tabla no está creada aún
+    } catch {
+      // Ignorar de forma segura si la tabla no existe o falla la inserción
     }
 
-    // 7. Servir el PDF estampado al cliente
+    // 8. Servir el PDF estampado al cliente
     const rawName = product?.name || 'producto'
-    const safeFilename = `${rawName.replace(/[^a-z0-9]/gi, '_')}.pdf`
+    const safeFilename = `${rawName.replace(/[^a-z0-9_-]/gi, '_')}.pdf`
 
     return new NextResponse(new Uint8Array(finalBuffer), {
       status: 200,
@@ -178,10 +179,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         'Cache-Control': 'no-store, max-age=0',
       },
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Error desconocido'
     console.error('❌ Error grave en la API de descarga:', err)
     return NextResponse.json(
-      { error: 'Error interno al generar la descarga', detalle: err.message }, 
+      { error: 'Error interno al generar la descarga', detalle: errorMessage },
       { status: 500 }
     )
   }
