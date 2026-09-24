@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { analyzeForensicFile } from './actions'
 import { ShieldCheck, ShieldAlert, Upload, UserX, CheckCircle2 } from 'lucide-react'
+import { addToBlocklist } from '../blocklist/actions'
 
 interface InspectionResult {
   found: boolean
@@ -80,7 +81,17 @@ export default function InspectorPage() {
   }
 
   const handleAddToBlacklist = async () => {
-    setBlacklisted(true)
+    if (!result?.buyerEmail) return
+    setLoading(true)
+    const res = await addToBlocklist(
+      result.buyerEmail,
+      `Filtración confirmada del producto: ${result.productName || 'Documento'}`,
+      'inspector'
+    )
+    setLoading(false)
+    if (res.success) {
+      setBlacklisted(true)
+    }
   }
 
   return (

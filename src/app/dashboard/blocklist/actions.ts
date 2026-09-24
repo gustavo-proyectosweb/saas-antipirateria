@@ -1,0 +1,76 @@
+'use server'
+
+import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto'
+
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
+
+/**
+ * Función auxiliar para hashear el correo (SHA-256)
+ */
+export async function hashEmail(email: string): Promise<string> {
+  const normalizedEmail = email.trim().toLowerCase()
+  return crypto.createHash('sha256').update(normalizedEmail).digest('hex')
+}
+
+/**
+ * Agrega un comprador a la lista negra
+ */
+export async function addToBlocklist(
+  email: string,
+  reason: string = 'Infracción detectada en Inspector Forense',
+  source: 'manual' | 'inspector' = 'inspector',
+  creatorId?: string
+) {
+  try {
+    if (!email) throw new Error('El correo electrónico es requerido.')
+
+    const emailHash = await hashEmail(email)
+    const supabase = getSupabaseAdmin()
+
+    // Si no se pasa creatorId explícito, intentamos insertar el registro
+    const { data, error } = await supabase.from('blocklist_entries').insert({
+      creator_id: creatorId || null,
+      buyer_email_hash: emailHash,
+      reason,
+      source,
+    }).select()
+
+    if (error) {
+      // Si ya existía el registro bloqueado, asumimos éxito
+      if (error.code === '23505') {
+        return { success: true, message: 'El usuario ya estaba en la lista negra.' }
+      }
+      throw error
+    }
+
+    return { success: true, data }
+  } catch (err: any) {
+    console.error('Error al agregar a la lista negra:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Obtiene la lista de bloqueos guardados
+ */
+export async function getBlocklistEntries() {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { data, error } = await supabase
+      .from('blocklist_entries')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return { success: true, entries: data || [] }
+  } catch (err: any) {
+    console.error('Error al obtener la lista negra:', err)
+    return { success: false, entries: [], error: err.message }
+  }
+}
