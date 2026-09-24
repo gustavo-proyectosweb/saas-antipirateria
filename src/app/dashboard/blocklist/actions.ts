@@ -159,3 +159,35 @@ export async function getGlobalReportCount(emailHash: string): Promise<number> {
     return 0
   }
 }
+
+/**
+ * Constante que define el umbral mínimo de reportes comunitarios para disparar alerta
+ */
+const GLOBAL_WARNING_THRESHOLD = 3
+
+/**
+ * Consulta el conteo de reportes de un comprador y determina si supera el umbral
+ */
+export async function checkCommunityWarning(buyerEmailHash: string) {
+  try {
+    const supabase = getSupabaseAdmin()
+
+    const { data, error } = await supabase
+      .from('global_blocklist')
+      .select('report_count')
+      .eq('buyer_email_hash', buyerEmailHash)
+      .single()
+
+    if (error || !data) {
+      return { hasWarning: false, reportCount: 0 }
+    }
+
+    const reportCount = data.report_count || 0
+    const hasWarning = reportCount >= GLOBAL_WARNING_THRESHOLD
+
+    return { hasWarning, reportCount }
+  } catch (err) {
+    console.error('Error al consultar advertencia comunitaria:', err)
+    return { hasWarning: false, reportCount: 0 }
+  }
+}

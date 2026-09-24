@@ -4,6 +4,8 @@ import { NormalizedOrderEvent } from './types'
 import { createAccessToken } from '@/lib/tokens/generateToken'
 import { sendDeliveryEmail } from '@/lib/emails/sendDeliveryEmail'
 import { isEmailBlocked } from '@/app/dashboard/blocklist/actions'
+import { checkCommunityWarning } from '@/app/dashboard/blocklist/actions'
+import { createHash } from 'crypto' // Para generar el hash del correo
 
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -54,6 +56,20 @@ export async function processPurchase(event: NormalizedOrderEvent) {
     .eq('platform', event.platform)
     .single()
 
+    // Generar hash SHA-256 del correo del comprador
+  const buyerEmailHash = createHash('sha256')
+    .update(event.customerEmail.trim().toLowerCase())
+    .digest('hex')
+
+  // Consultar si el comprador tiene alertas en la red comunitaria (umbral >= 3)
+  const { hasWarning, reportCount } = await checkCommunityWarning(buyerEmailHash)
+
+  if (hasWarning) {
+    console.warn(
+      `⚠️ [ALERTA COMUNITARIA] El comprador ${event.customerEmail} tiene ${reportCount} reportes acumulados en la red global.`
+    )
+  }
+
   let purchase = existingPurchase
 
   if (!purchase) {
@@ -70,6 +86,8 @@ export async function processPurchase(event: NormalizedOrderEvent) {
         currency: event.currency,
         status: 'completed',
         is_blocked: isBlocked, // <-- Guardamos la bandera de bloqueo
+        community_warning: hasWarning, // 👈 Nuevo: guarda true si report_count >= 3
+      community_report_count: reportCount, // 👈 Nuevo: guarda la cantidad de reportes
       })
       .select()
       .single()
