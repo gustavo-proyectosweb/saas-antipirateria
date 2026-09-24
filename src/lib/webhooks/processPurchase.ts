@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NormalizedOrderEvent } from './types'
 import { createAccessToken } from '@/lib/tokens/generateToken'
 import { sendDeliveryEmail } from '@/lib/emails/sendDeliveryEmail'
+import { isEmailBlocked } from '@/app/dashboard/blocklist/actions'
 
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -36,10 +37,19 @@ export async function processPurchase(event: NormalizedOrderEvent) {
     }
   }
 
+  // VERIFICACIÓN DE LISTA NEGRA
+  const isBlocked = await isEmailBlocked(event.customerEmail, product.creator_id)
+
+  if (isBlocked) {
+    console.warn(
+      `⚠️ [ALERTA LISTA NEGRA] El comprador ${event.customerEmail} está en la lista negra de la creadora ${product.creator_id}.`
+    )
+  }
+
   // 2. Verificar si la compra ya existe por external_order_id y platform
   const { data: existingPurchase } = await supabaseAdmin
     .from('purchases')
-    .select('id')
+    .select('id, is_blocked')
     .eq('external_order_id', event.orderId)
     .eq('platform', event.platform)
     .single()
@@ -47,7 +57,7 @@ export async function processPurchase(event: NormalizedOrderEvent) {
   let purchase = existingPurchase
 
   if (!purchase) {
-    // Insertar la compra de forma IDEMPOTENTE
+    // Insertar la compra de forma IDEMPOTENTE con el flag is_blocked
     const { data: newPurchase, error: purchaseError } = await supabaseAdmin
       .from('purchases')
       .insert({
@@ -59,6 +69,7 @@ export async function processPurchase(event: NormalizedOrderEvent) {
         amount: event.totalAmount,
         currency: event.currency,
         status: 'completed',
+        is_blocked: isBlocked, // <-- Guardamos la bandera de bloqueo
       })
       .select()
       .single()
@@ -82,7 +93,7 @@ export async function processPurchase(event: NormalizedOrderEvent) {
     purchase = newPurchase
   }
 
-  // Validación de seguridad para TypeScript (asegura que purchase no sea null/undefined)
+  // Validación de seguridad para TypeScript
   if (!purchase) {
     throw new Error('No se pudo obtener ni registrar la compra.')
   }
@@ -93,7 +104,19 @@ export async function processPurchase(event: NormalizedOrderEvent) {
     console.log(`ℹ️ Reutilizando compra existente ID: ${purchase.id}`)
   }
 
-  // 3. Generar o recuperar el token de acceso
+  // SI ESTÁ BLOQUEADO: Detenemos la generación de token y el envío de email
+  if (purchase.is_blocked || isBlocked) {
+    console.warn(`🛑 Compra ${purchase.id} bloqueada por lista negra. Se omite el envío del correo.`)
+    return {
+      success: true,
+      duplicated: !!existingPurchase,
+      blocked: true,
+      purchaseId: purchase.id,
+      message: 'Compra registrada con flag is_blocked = true. Se omitió la entrega.',
+    }
+  }
+
+  // 3. Generar o recuperar el token de acceso (solo para compradores válidos)
   let activeToken: string
 
   const { data: existingToken } = await supabaseAdmin
@@ -121,6 +144,7 @@ export async function processPurchase(event: NormalizedOrderEvent) {
   return {
     success: true,
     duplicated: !!existingPurchase,
+    blocked: false,
     purchaseId: purchase.id,
     accessToken: activeToken,
     emailSent: emailResult.success,

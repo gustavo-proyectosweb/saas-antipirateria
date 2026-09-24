@@ -74,3 +74,30 @@ export async function getBlocklistEntries() {
     return { success: false, entries: [], error: err.message }
   }
 }
+
+/**
+ * Verifica si un email está bloqueado por la creadora
+ */
+export async function isEmailBlocked(email: string, creatorId?: string): Promise<boolean> {
+  try {
+    const emailHash = await hashEmail(email)
+    const supabase = getSupabaseAdmin()
+
+    let query = supabase
+      .from('blocklist_entries')
+      .select('id')
+      .eq('buyer_email_hash', emailHash)
+
+    if (creatorId) {
+      query = query.eq('creator_id', creatorId)
+    }
+
+    const { data, error } = await query
+
+    if (error || !data) return false
+    return data.length > 0
+  } catch (err) {
+    console.error('Error verificando lista negra:', err)
+    return false
+  }
+}

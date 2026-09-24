@@ -58,31 +58,40 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const supabaseAdmin = getSupabaseAdmin()
 
   try {
-    // 2. Validar token en la base de datos
-    const { data: tokenData, error } = await supabaseAdmin
+   // 2. Validar token en la base de datos
+    const { data: tokenData, error: tokenError } = await supabaseAdmin
       .from('access_tokens')
-      .select(`
-        id,
-        token,
-        download_count,
-        expires_at,
-        purchases (
-          id,
-          buyer_email,
-          products (
-            id,
-            name,
-            master_file_key
-          )
-        )
-      `)
+      .select('id, purchase_id, download_count, expires_at')
       .eq('token', token)
       .single()
 
-    if (error || !tokenData) {
+    if (tokenError || !tokenData) {
       return NextResponse.json(
         { error: 'El enlace de descarga no existe o ha sido modificado. Contactá a la creadora para solicitar ayuda.' },
         { status: 404 }
+      )
+    }
+
+    // 2.b Consultar los datos de la compra de forma directa para evitar errores de anidamiento
+    const { data: purchase, error: purchaseError } = await supabaseAdmin
+      .from('purchases')
+      .select('id, buyer_email, is_blocked, product_id, products(id, name, master_file_key)')
+      .eq('id', tokenData.purchase_id)
+      .single()
+
+    if (purchaseError || !purchase) {
+      return NextResponse.json(
+        { error: 'No se encontró la compra asociada a este enlace.' },
+        { status: 404 }
+      )
+    }
+
+    // VERIFICACIÓN DE LISTA NEGRA: Bloqueo inmediato si is_blocked es true
+    if (purchase.is_blocked === true) {
+      console.warn(`🛑 Acceso bloqueado para la compra ID: ${purchase.id}`)
+      return NextResponse.json(
+        { error: 'Acceso Denegado. Esta descarga ha sido restringida por el creador del contenido.' },
+        { status: 403 }
       )
     }
 
@@ -106,16 +115,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    // Extraer compra y producto de forma segura
-    const purchase = Array.isArray(tokenData.purchases)
-      ? tokenData.purchases[0]
-      : tokenData.purchases
-
-    const product = purchase?.products
-      ? Array.isArray(purchase.products)
-        ? purchase.products[0]
-        : purchase.products
-      : null
+    const product = Array.isArray(purchase.products)
+      ? purchase.products[0]
+      : purchase.products
 
     const fileKey = product?.master_file_key
     if (!fileKey) {
