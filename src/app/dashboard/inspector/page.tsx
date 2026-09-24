@@ -1,17 +1,35 @@
-// src/app/dashboard/inspector/page.tsx
-
 'use client'
 
 import { useState } from 'react'
-import { analyzeForensicFile, ForensicResult } from './actions'
-import { maskEmail, formatDate } from '@/lib/utils'
+import { analyzeForensicFile } from './actions'
+import { ShieldCheck, ShieldAlert, Upload, UserX, CheckCircle2 } from 'lucide-react'
+
+interface InspectionResult {
+  found: boolean
+  purchaseId?: string
+  buyerEmail?: string
+  productName?: string
+  purchaseDate?: string
+  methodFound?: string
+  error?: string
+}
 
 export default function InspectorPage() {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<InspectionResult | null>(null)
+  const [blacklisted, setBlacklisted] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [result, setResult] = useState<ForensicResult | null>(null)
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0])
+      setResult(null)
+      setBlacklisted(false)
+    }
+  }
+
+  // Eventos para Drag and Drop
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
@@ -29,228 +47,199 @@ export default function InspectorPage() {
     e.stopPropagation()
     setIsDragging(false)
 
-    const files = e.dataTransfer.files
-    if (files && files.length > 0) {
-      const file = files[0]
-      if (file.type === 'application/pdf') {
-        setSelectedFile(file)
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const droppedFile = e.dataTransfer.files[0]
+      if (droppedFile.type === 'application/pdf' || droppedFile.name.endsWith('.pdf')) {
+        setFile(droppedFile)
         setResult(null)
-      } else {
-        alert('Por favor, selecciona un archivo en formato PDF.')
-      }
-    }
-  }
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files && files.length > 0) {
-      const file = files[0]
-      if (file.type === 'application/pdf') {
-        setSelectedFile(file)
-        setResult(null)
-      } else {
-        alert('Por favor, selecciona un archivo en formato PDF.')
+        setBlacklisted(false)
       }
     }
   }
 
   const handleAnalyze = async () => {
-    if (!selectedFile) return
-
-    setIsAnalyzing(true)
+    if (!file) return
+    setLoading(true)
     setResult(null)
+    setBlacklisted(false)
 
-    const formData = new FormData()
-    formData.append('file', selectedFile)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
 
-    const response = await analyzeForensicFile(formData)
-
-    setResult(response)
-    setIsAnalyzing(false)
+      const res = await analyzeForensicFile(formData)
+      setResult(res)
+    } catch (err) {
+      setResult({
+        found: false,
+        error: 'Ocurrió un error al procesar el archivo. Inténtalo de nuevo.',
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleReset = () => {
-    setSelectedFile(null)
-    setIsAnalyzing(false)
-    setResult(null)
+  const handleAddToBlacklist = async () => {
+    setBlacklisted(true)
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="max-w-4xl mx-auto p-6 space-y-8">
       {/* Encabezado */}
       <div>
-        <h1 className="text-2xl font-bold text-white mb-1">
+        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           Inspector Forense de PDF 🔍
         </h1>
-        <p className="text-sm text-gray-400">
-          Sube un PDF para analizar sus metadatos, firmas digitales y rastrear al comprador original.
+        <p className="text-gray-400 text-sm mt-1">
+          Sube un PDF sospechoso o filtrado para verificar sus marcas invisibles e identificar al comprador original.
         </p>
       </div>
 
-      {/* ÁREA DE CARGA / DRAG & DROP */}
+      {/* Zona de Dropzone / Carga de Archivo */}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${
+        className={`border-2 border-dashed rounded-xl p-8 text-center transition ${
           isDragging
-            ? 'border-indigo-500 bg-indigo-950/20'
-            : selectedFile
-            ? 'border-green-500/50 bg-gray-900/50'
-            : 'border-gray-800 bg-gray-950 hover:border-gray-700'
+            ? 'border-indigo-500 bg-indigo-500/10'
+            : 'border-gray-700 hover:border-indigo-500 bg-gray-900/50'
         }`}
       >
         <input
           type="file"
           accept="application/pdf"
           onChange={handleFileChange}
-          disabled={isAnalyzing}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-          id="pdf-inspector-input"
+          className="hidden"
+          id="pdf-upload"
         />
-
-        <div className="flex flex-col items-center justify-center space-y-3 pointer-events-none">
-          <div className="w-12 h-12 rounded-full bg-gray-900 border border-gray-800 flex items-center justify-center text-2xl">
-            📄
+        <label
+          htmlFor="pdf-upload"
+          className="cursor-pointer flex flex-col items-center justify-center gap-3"
+        >
+          <div className="w-12 h-12 rounded-full bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+            <Upload className="w-6 h-6" />
           </div>
-
-          {selectedFile ? (
-            <div>
-              <p className="text-sm font-semibold text-white">{selectedFile.name}</p>
-              <p className="text-xs text-gray-400 mt-1">
-                {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB — Archivo PDF listo
-              </p>
-            </div>
-          ) : (
-            <div>
-              <p className="text-sm font-medium text-gray-200">
-                Arrastra tu PDF aquí o <span className="text-indigo-400 underline">selecciona un archivo</span>
-              </p>
-              <p className="text-xs text-gray-500 mt-1">Solo archivos PDF (Máx. 50MB)</p>
-            </div>
-          )}
-        </div>
+          <div>
+            <p className="text-white font-medium">
+              {file ? file.name : 'Haz clic para seleccionar o arrastra un archivo PDF'}
+            </p>
+            <p className="text-gray-500 text-xs mt-1">
+              {file
+                ? `${(file.size / (1024 * 1024)).toFixed(2)} MB — listo para inspeccionar`
+                : 'Formatos soportados: .pdf'}
+            </p>
+          </div>
+        </label>
       </div>
 
-      {/* Botones de acción */}
-      {selectedFile && (
-        <div className="flex items-center space-x-3">
+      {/* Botones de Acción */}
+      {file && (
+        <div className="flex gap-3">
           <button
             onClick={handleAnalyze}
-            disabled={isAnalyzing}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-medium px-5 py-2.5 rounded-lg transition text-sm flex items-center space-x-2"
+            disabled={loading}
+            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg shadow-lg disabled:opacity-50 transition flex items-center gap-2"
           >
-            {isAnalyzing ? (
+            {loading ? (
               <>
-                <svg
-                  className="animate-spin h-4 w-4 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                <span>Analizando PDF...</span>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Analizando capas forenses...
               </>
             ) : (
-              <span>Analizar PDF</span>
+              'Analizar PDF'
             )}
           </button>
-
           <button
-            onClick={handleReset}
-            disabled={isAnalyzing}
-            className="bg-gray-900 hover:bg-gray-800 border border-gray-800 text-gray-300 font-medium px-4 py-2.5 rounded-lg transition text-sm disabled:opacity-50"
+            onClick={() => {
+              setFile(null)
+              setResult(null)
+            }}
+            className="px-4 py-2.5 text-gray-400 hover:text-white transition text-sm"
           >
             Quitar archivo
           </button>
         </div>
       )}
 
-      {/* Carga durante el análisis */}
-      {isAnalyzing && (
-        <div className="bg-gray-950 border border-gray-800 p-6 rounded-xl animate-pulse space-y-3">
-          <div className="h-4 bg-gray-800 rounded w-1/4"></div>
-          <div className="h-3 bg-gray-900 rounded w-3/4"></div>
-          <div className="h-3 bg-gray-900 rounded w-1/2"></div>
-        </div>
-      )}
-
-      {/* ÁREA DE RESULTADOS */}
+      {/* TARJETA DE RESULTADOS */}
       {result && (
-        <div
-          className={`p-6 rounded-xl border ${
-            result.stamped && result.buyerEmail
-              ? 'bg-gray-950 border-green-500/30'
-              : result.stamped
-              ? 'bg-gray-950 border-amber-500/30'
-              : 'bg-gray-950 border-red-500/30'
-          } space-y-4`}
-        >
-          <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-            <h2 className="text-lg font-semibold text-white flex items-center space-x-2">
-              <span>{result.stamped ? '🛡️' : '⚠️'}</span>
-              <span>Resultado del Análisis</span>
-            </h2>
-            <span
-              className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${
-                result.stamped && result.buyerEmail
-                  ? 'bg-green-900/40 text-green-300 border-green-500/30'
-                  : result.stamped
-                  ? 'bg-amber-900/40 text-amber-300 border-amber-500/30'
-                  : 'bg-red-900/40 text-red-300 border-red-500/30'
-              }`}
-            >
-              {result.stamped ? 'Marca Detectada' : 'Sin Marca Forense'}
-            </span>
-          </div>
+        <div className="space-y-6">
+          {result.found ? (
+            /* CASO 1: MARCA DETECTADA */
+            <div className="border border-emerald-500/30 bg-emerald-950/20 rounded-xl p-6 space-y-6 relative overflow-hidden">
+              <div className="flex items-center justify-between border-b border-emerald-500/20 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Marca Forense Identificada</h3>
+                    <p className="text-emerald-400 text-xs">Origen del archivo verificado exitosamente</p>
+                  </div>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Infractor Detectado
+                </span>
+              </div>
 
-          <p className="text-sm text-gray-300">{result.message}</p>
-
-          {/* Ficha técnica si se encontró la marca y la compra */}
-          {result.stamped && (
-            <div className="bg-gray-900/60 rounded-lg p-4 space-y-2 border border-gray-800 text-sm">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Detalle de Información de Compra */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-900/60 p-4 rounded-lg border border-gray-800">
                 <div>
-                  <span className="text-xs text-gray-500 block uppercase font-bold">Comprador</span>
-                  <span className="text-white font-medium">
-                    {result.buyerEmail ? maskEmail(result.buyerEmail) : 'No disponible'}
-                  </span>
+                  <span className="text-xs text-gray-400 block uppercase tracking-wider font-semibold">Comprador Original</span>
+                  <span className="text-base font-mono font-medium text-white break-all">{result.buyerEmail}</span>
                 </div>
 
                 <div>
-                  <span className="text-xs text-gray-500 block uppercase font-bold">Producto</span>
-                  <span className="text-white font-medium">
-                    {result.productName || 'No disponible'}
-                  </span>
+                  <span className="text-xs text-gray-400 block uppercase tracking-wider font-semibold">Producto</span>
+                  <span className="text-base font-medium text-white">{result.productName || 'Documento Protegido'}</span>
                 </div>
 
                 <div>
-                  <span className="text-xs text-gray-500 block uppercase font-bold">ID de Compra</span>
-                  <span className="text-gray-300 font-mono text-xs">
-                    {result.purchaseId || 'No disponible'}
-                  </span>
+                  <span className="text-xs text-gray-400 block uppercase tracking-wider font-semibold">Fecha de Compra</span>
+                  <span className="text-sm font-medium text-gray-300">{result.purchaseDate || 'Registrada en sistema'}</span>
                 </div>
 
                 <div>
-                  <span className="text-xs text-gray-500 block uppercase font-bold">Fecha de Compra</span>
-                  <span className="text-gray-300">
-                    {result.purchaseDate ? formatDate(result.purchaseDate) : 'No disponible'}
-                  </span>
+                  <span className="text-xs text-gray-400 block uppercase tracking-wider font-semibold">ID de Compra</span>
+                  <span className="text-xs font-mono text-gray-400 break-all">{result.purchaseId}</span>
                 </div>
               </div>
+
+              {/* Botón de Lista Negra */}
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-xs text-gray-400">
+                  ¿Deseas bloquear las descargas de este usuario en tu plataforma?
+                </p>
+                {blacklisted ? (
+                  <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20">
+                    <CheckCircle2 className="w-4 h-4" /> Usuario en Lista Negra
+                  </span>
+                ) : (
+                  <button
+                    onClick={handleAddToBlacklist}
+                    className="px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white font-medium text-sm rounded-lg transition flex items-center gap-2 shadow-lg shadow-red-900/20"
+                  >
+                    <UserX className="w-4 h-4" /> Agregar a Lista Negra
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* CASO 2: NO DETECTADO */
+            <div className="border border-amber-500/30 bg-amber-950/20 rounded-xl p-6 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">No se Pudo Identificar el Origen</h3>
+                  <p className="text-amber-400/80 text-xs">Sin marcas forenses reconocibles</p>
+                </div>
+              </div>
+              <p className="text-gray-300 text-sm leading-relaxed pt-2 border-t border-amber-500/10">
+                El documento analizado no contiene huellas digitales activas. Esto puede deberse a que el archivo no fue procesado por nuestro sistema, o a que fue completamente rasterizado (convertido en imágenes escaneadas/capturas de pantalla) antes de ser compartido.
+              </p>
             </div>
           )}
         </div>
