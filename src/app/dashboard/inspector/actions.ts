@@ -21,19 +21,38 @@ export async function analyzeForensicFile(formData: FormData) {
     // Decodifica la marca en el buffer recibido
     const decoded = await decodeStamp(pdfBuffer)
 
+    const supabase = getSupabaseAdmin()
+
+    // Si no se detectó marca forense
     if (!decoded || !decoded.purchaseId) {
+      // Guardar auditoría del intento fallido
+      await supabase.from('forensic_lookups').insert({
+        found: false,
+        file_name: file.name,
+      })
+
       return { found: false }
     }
 
     // Consulta los detalles de la compra en la base de datos
-    const supabase = getSupabaseAdmin()
     const { data: purchase, error } = await supabase
       .from('purchases')
       .select('*, products(name)')
       .eq('id', decoded.purchaseId)
       .single()
 
-    if (error || !purchase) {
+    const foundSuccess = !error && !!purchase
+    const buyerEmail = purchase?.buyer_email || 'Email no localizado en BD'
+
+    // Guardar auditoría de la búsqueda (marca detectada)
+    await supabase.from('forensic_lookups').insert({
+      purchase_id: decoded.purchaseId,
+      found: true,
+      file_name: file.name,
+      buyer_email: buyerEmail,
+    })
+
+    if (!purchase) {
       return {
         found: true,
         purchaseId: decoded.purchaseId,
