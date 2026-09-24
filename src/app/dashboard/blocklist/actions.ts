@@ -101,3 +101,61 @@ export async function isEmailBlocked(email: string, creatorId?: string): Promise
     return false
   }
 }
+
+/**
+ * Obtiene el estado del Toggle Opt-In de la creadora actual
+ */
+export async function getCommunityOptInStatus(creatorId: string) {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { data, error } = await supabase
+      .from('creators')
+      .select('community_opt_in')
+      .eq('id', creatorId)
+      .single()
+
+    if (error) throw error
+    return { success: true, optIn: data?.community_opt_in || false }
+  } catch (err: any) {
+    console.error('Error al obtener estado opt-in:', err)
+    return { success: false, optIn: false }
+  }
+}
+
+/**
+ * Actualiza la preferencia Opt-In de la creadora
+ */
+export async function toggleCommunityOptIn(creatorId: string, status: boolean) {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { error } = await supabase
+      .from('creators')
+      .update({ community_opt_in: status })
+      .eq('id', creatorId)
+
+    if (error) throw error
+    return { success: true, status }
+  } catch (err: any) {
+    console.error('Error al actualizar opt-in:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Obtiene el conteo global anónimo para un hash específico
+ */
+export async function getGlobalReportCount(emailHash: string): Promise<number> {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { data, error } = await supabase
+      .from('global_blocklist')
+      .select('report_count')
+      .eq('buyer_email_hash', emailHash)
+      .single()
+
+    if (error || !data) return 0
+    return data.report_count || 0
+  } catch {
+    return 0
+  }
+}
