@@ -92,10 +92,20 @@ export async function injectVectorForensicMark(
 
   const { x, y } = getDeterministicPosition(purchaseId, width, height)
 
+  // 1. Mantiene el punto geométrico si lo necesitas para la coordenada
   firstPage.drawCircle({
     x,
     y,
     size: 0.2,
+    color: rgb(0, 0, 0),
+    opacity: 0.01,
+  })
+
+  // 2. INYECCIÓN CRÍTICA: Escribe el prefijo y el ID en el canvas vectorial (casi invisible)
+  firstPage.drawText(`STAMP_PID:${purchaseId}`, {
+    x: 5,
+    y: 5,
+    size: 1,
     color: rgb(0, 0, 0),
     opacity: 0.01,
   })
