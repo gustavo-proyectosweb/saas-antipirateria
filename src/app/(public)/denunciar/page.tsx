@@ -3,13 +3,24 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Turnstile } from '@marsidev/react-turnstile'
 import { reportFormSchema, type ReportFormData } from '@/lib/schemas/reportSchema'
-import { ShieldAlert, Send, CheckCircle2, AlertTriangle, Link as LinkIcon, FileText, Mail, User } from 'lucide-react'
+import { submitPublicReport } from './actions'
+import { ShieldAlert, Send, CheckCircle2, AlertTriangle, Link as LinkIcon, FileText, Mail, User, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 
 export default function DenunciarPage() {
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
+  
+  // Estado para el token del Captcha Turnstile
+  const [turnstileToken, setTurnstileToken] = useState<string>('')
+  
+  // Estado para el campo Honeypot (campo oculto anti-bots)
+  const [honeypot, setHoneypot] = useState<string>('')
+
+  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '1x00000000000000000000AA'
 
   const {
     register,
@@ -27,15 +38,31 @@ export default function DenunciarPage() {
   })
 
   const onSubmit = async (data: ReportFormData) => {
+    setServerError(null)
+
+    if (!turnstileToken) {
+      setServerError('Por favor, completa la verificación de seguridad.')
+      return
+    }
+
     setIsSubmitting(true)
-    console.log('Datos validados en cliente:', data)
 
-    // Simulamos temporalmente el envío (mañana conectaremos la Server Action)
-    await new Promise((resolve) => setTimeout(resolve, 1200))
+    try {
+      const res = await submitPublicReport(data, turnstileToken, honeypot)
 
-    setIsSubmitting(false)
-    setIsSubmitted(true)
-    reset()
+      if (res.success) {
+        setIsSubmitted(true)
+        reset()
+        setTurnstileToken('')
+      } else {
+        setServerError(res.message)
+      }
+    } catch (err) {
+      console.error(err)
+      setServerError('Ocurrió un error inesperado al procesar la denuncia.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -50,7 +77,7 @@ export default function DenunciarPage() {
             Portal Público de Denuncias
           </h1>
           <p className="text-sm text-gray-400 max-w-lg mx-auto">
-            Ayúdanos a proteger el trabajo de las creadoras. Puedes reportar enlaces de descarga no autorizados o piratería de forma totalmente anónima.
+            Ayúdanos a proteger el trabajo de las creadoras. Puedes reportar enlaces de descarga no autorizados de forma anónima y segura.
           </p>
         </div>
 
@@ -60,7 +87,7 @@ export default function DenunciarPage() {
             <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
             <h2 className="text-xl font-bold text-white">¡Denuncia recibida!</h2>
             <p className="text-sm text-gray-300">
-              Gracias por colaborar. Nuestro equipo revisará la información enviada para tomar las medidas pertinentes.
+              Gracias por colaborar. La verificación anti-spam aprobó el envío y nuestro equipo revisará la información.
             </p>
             <button
               onClick={() => setIsSubmitted(false)}
@@ -72,6 +99,27 @@ export default function DenunciarPage() {
         ) : (
           /* Formulario */
           <form onSubmit={handleSubmit(onSubmit)} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 sm:p-8 space-y-6 shadow-xl">
+            
+            {serverError && (
+              <div className="bg-red-950/50 border border-red-500/40 text-red-300 p-4 rounded-xl text-sm flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+                <span>{serverError}</span>
+              </div>
+            )}
+
+            {/* CAMPO HONEYPOT (Oculto visualmente para humanos) */}
+            <div className="hidden" aria-hidden="true">
+              <label htmlFor="website_hp">No llenar si eres humano</label>
+              <input
+                id="website_hp"
+                type="text"
+                tabIndex={-1}
+                autoComplete="off"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+              />
+            </div>
+
             {/* Campo 1: URL del contenido pirata */}
             <div>
               <label htmlFor="contentUrl" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2 flex items-center gap-2">
@@ -160,14 +208,35 @@ export default function DenunciarPage() {
               )}
             </div>
 
+            {/* WIDGET DE CLOUDFLARE TURNSTILE */}
+            <div className="flex flex-col items-center justify-center space-y-2 py-2">
+              <Turnstile
+                siteKey={siteKey}
+                onSuccess={(token) => {
+                  setTurnstileToken(token)
+                  setServerError(null)
+                }}
+                onError={() => {
+                  setTurnstileToken('')
+                  setServerError('Error al cargar la verificación anti-spam.')
+                }}
+                onExpire={() => {
+                  setTurnstileToken('')
+                }}
+              />
+              <span className="text-[11px] text-gray-500 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Protección anti-spam activada
+              </span>
+            </div>
+
             {/* Botón de envío */}
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-red-600 hover:bg-red-500 disabled:bg-gray-800 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
+              disabled={isSubmitting || !turnstileToken}
+              className="w-full bg-red-600 hover:bg-red-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold py-3.5 px-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
             >
               {isSubmitting ? (
-                <span>Enviando denuncia...</span>
+                <span>Validando y enviando...</span>
               ) : (
                 <>
                   <Send className="w-4 h-4" /> Registrar Denuncia
