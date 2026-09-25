@@ -1,8 +1,13 @@
 'use server'
 
 import { reportFormSchema } from '@/lib/schemas/reportSchema'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { decodeStamp } from '@/lib/forensics/stamp'
+import { Resend } from 'resend'
+import { ReportNotificationEmail } from '@/components/emails/ReportNotificationEmail'
+import React from 'react'
+
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 type SubmitReportResult = {
   success: boolean
@@ -52,7 +57,7 @@ export async function submitPublicReport(
     }
   }
 
-  // 3. Normalizar datos de entrada (si viene FormData o JS Object)
+  // 3. Normalizar datos de entrada
   let rawData: Record<string, unknown> = {}
   let file: File | null = null
 
@@ -78,9 +83,9 @@ export async function submitPublicReport(
   const { productName, description, contentUrl, reporterEmail } = parsed.data
 
   let matchedCreatorId: string | null = null
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
-  // 4. Matching Forense con decodeStamp si hay PDF adjunto
+  // 4. Match Nivel 1: Forense vía decodeStamp en PDF
   if (file && file.size > 0 && file.type === 'application/pdf') {
     try {
       console.log('🔍 [Forensics] Analizando PDF adjunto con decodeStamp...')
@@ -92,44 +97,117 @@ export async function submitPublicReport(
       if (stampResult && stampResult.purchaseId) {
         console.log('🎯 [Forensics] Marca detectada en PDF. Purchase ID:', stampResult.purchaseId)
 
-        const { data: purchaseData } = await supabase
+        const { data: purchaseData, error: purchaseError } = await supabase
           .from('purchases')
           .select('creator_id')
           .eq('id', stampResult.purchaseId)
-          .single()
+          .maybeSingle()
+
+        if (purchaseError) {
+          console.warn('⚠️ Error al consultar la compra:', purchaseError.message)
+        }
 
         if (purchaseData?.creator_id) {
           matchedCreatorId = purchaseData.creator_id
-          console.log('✅ [Match Exitoso] Creadora vinculada:', matchedCreatorId)
+          console.log('✅ [Match Forense Exitoso] Creadora vinculada:', matchedCreatorId)
+        } else {
+          console.log('ℹ️ El purchaseId no existe en la DB. Pasando a búsqueda por texto...')
         }
-      } else if (stampResult && stampResult.creatorId) {
-        matchedCreatorId = stampResult.creatorId
-        console.log('✅ [Match Exitoso] Creadora vinculada directamente:', matchedCreatorId)
-      } else {
-        console.log('ℹ️ [Forensics] El PDF no contiene marcas forenses reconocibles.')
       }
     } catch (forensicError) {
       console.warn('⚠️ Error al decodificar marca forense en el PDF:', forensicError)
     }
   }
 
-  // 5. Guardar en Supabase (community_reports)
+  // 5. Match Nivel 2: Búsqueda por texto (solo si no hubo match forense previo)
+  if (!matchedCreatorId && productName) {
+    try {
+      console.log(`🔍 [Text Match] Buscando creadora relacionada en 'creators' con: "${productName}"...`)
+      
+      const { data: creatorMatch } = await supabase
+        .from('creators')
+        .select('id, store_name')
+        .ilike('store_name', `%${productName.trim()}%`)
+        .limit(1)
+        .maybeSingle()
+
+      if (creatorMatch?.id) {
+        matchedCreatorId = creatorMatch.id
+        console.log('✅ [Match por Texto Exitoso] Tienda/Creadora encontrada:', creatorMatch.store_name)
+      }
+    } catch (textMatchError) {
+      console.warn('⚠️ Error al realizar la búsqueda por texto:', textMatchError)
+    }
+  }
+
+  // 6. Guardar en Supabase (community_reports)
   try {
-    const { error } = await supabase.from('community_reports').insert({
-      product_name: productName,
-      description: description,
-      content_url: contentUrl,
-      reporter_email: reporterEmail || null,
-      status: 'pending',
-      matched_creator_id: matchedCreatorId,
-    })
+    const { data: report, error } = await supabase
+      .from('community_reports')
+      .insert({
+        product_name: productName,
+        description: description,
+        content_url: contentUrl,
+        reporter_email: reporterEmail || null,
+        status: 'pending',
+        matched_creator_id: matchedCreatorId,
+      })
+      .select('id')
+      .single()
 
     if (error) {
       console.error('Error al guardar en community_reports:', error)
       return { success: false, message: 'Ocurrió un error al registrar la denuncia en el sistema.' }
     }
 
-    console.log('✅ Reporte registrado exitosamente en la DB.')
+    console.log('✅ Reporte registrado exitosamente en la DB con ID:', report.id)
+
+    // 7. Enviar Email a la Creadora (si hubo match)
+    if (matchedCreatorId) {
+      try {
+        const { data: creatorData } = await supabase
+          .from('creators')
+          .select('store_name, user_id')
+          .eq('id', matchedCreatorId)
+          .maybeSingle()
+
+        if (creatorData?.user_id) {
+          // Intentamos obtener los datos del usuario
+          const { data: userData } = await supabase
+            .from('users')
+            .select('email')
+            .eq('id', creatorData.user_id)
+            .maybeSingle()
+
+          const recipientEmail = userData?.email
+
+          if (recipientEmail && process.env.RESEND_API_KEY) {
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+            const dashboardUrl = `${appUrl}/dashboard/reports`
+
+            console.log(`📧 [Resend] Enviando notificación por email a: ${recipientEmail}`)
+
+            await resend.emails.send({
+              from: process.env.RESEND_FROM_EMAIL || 'Anti-Piratería <onboarding@resend.dev>',
+              to: recipientEmail,
+              subject: `🚨 Nueva denuncia de piratería recibida: ${productName}`,
+              react: React.createElement(ReportNotificationEmail, {
+                creatorName: creatorData.store_name || 'Creadora',
+                productName: productName,
+                contentUrl: contentUrl,
+                description: description,
+                dashboardUrl: dashboardUrl,
+              }),
+            })
+
+            console.log('✉️ Email enviado con éxito vía Resend.')
+          }
+        }
+      } catch (emailError) {
+        console.error('⚠️ Error al enviar el correo con Resend:', emailError)
+      }
+    }
+
     return {
       success: true,
       message: 'Denuncia registrada con éxito.',
