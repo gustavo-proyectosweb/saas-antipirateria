@@ -38,32 +38,45 @@ export default function DenunciarPage() {
   })
 
   const onSubmit = async (data: ReportFormData) => {
-    setServerError(null)
+  setServerError(null)
 
-    if (!turnstileToken) {
-      setServerError('Por favor, completa la verificación de seguridad.')
-      return
-    }
-
-    setIsSubmitting(true)
-
-    try {
-      const res = await submitPublicReport(data, turnstileToken, honeypot)
-
-      if (res.success) {
-        setIsSubmitted(true)
-        reset()
-        setTurnstileToken('')
-      } else {
-        setServerError(res.message)
-      }
-    } catch (err) {
-      console.error(err)
-      setServerError('Ocurrió un error inesperado al procesar la denuncia.')
-    } finally {
-      setIsSubmitting(false)
-    }
+  if (!turnstileToken) {
+    setServerError('Por favor, completa la verificación de seguridad.')
+    return
   }
+
+  setIsSubmitting(true)
+
+  try {
+    const formPayload = new FormData()
+    formPayload.append('contentUrl', data.contentUrl)
+    formPayload.append('productName', data.productName)
+    formPayload.append('description', data.description)
+    if (data.reporterEmail) {
+      formPayload.append('reporterEmail', data.reporterEmail)
+    }
+
+    const fileInput = document.getElementById('evidenceFile') as HTMLInputElement | null
+    if (fileInput?.files?.[0]) {
+      formPayload.append('evidenceFile', fileInput.files[0])
+    }
+
+    const res = await submitPublicReport(formPayload, turnstileToken, honeypot)
+
+    if (res.success) {
+      setIsSubmitted(true)
+      reset()
+      setTurnstileToken('')
+    } else {
+      setServerError(res.message)
+    }
+  } catch (err) {
+    console.error(err)
+    setServerError('Ocurrió un error inesperado al procesar la denuncia.')
+  } finally {
+    setIsSubmitting(false)
+  }
+}
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -228,6 +241,24 @@ export default function DenunciarPage() {
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Protección anti-spam activada
               </span>
             </div>
+
+            {/* Campo opcional: Adjuntar PDF filtrado */}
+<div>
+  <label htmlFor="evidenceFile" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2 flex items-center gap-2">
+    <FileText className="w-4 h-4 text-indigo-400" />
+    Archivo PDF filtrado <span className="text-gray-500 font-normal">(Opcional)</span>
+  </label>
+  <input
+    id="evidenceFile"
+    name="evidenceFile"
+    type="file"
+    accept=".pdf"
+    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-gray-300 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
+  />
+  <p className="text-[11px] text-gray-500 mt-1">
+    Si adjuntas el archivo PDF original, el sistema intentará identificar automáticamente a la creadora afectada.
+  </p>
+</div>
 
             {/* Botón de envío */}
             <button
