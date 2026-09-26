@@ -7,7 +7,7 @@ export default function HomePage() {
       <header className="border-b border-gray-800 bg-gray-900/50 backdrop-blur sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 font-bold text-lg text-white">
-            <span className="text-xl">🛡️</span> StampPDF
+            <span className="text-xl">🛡️</span> StampsPDF
           </div>
           <div className="flex items-center gap-4">
             <Link
