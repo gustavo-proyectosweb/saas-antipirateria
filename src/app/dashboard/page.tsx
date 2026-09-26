@@ -1,3 +1,5 @@
+// src/app/dashboard/page.tsx
+
 import OnboardingChecklist from '@/components/OnboardingChecklist'
 
 export default function DashboardPage() {
