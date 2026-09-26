@@ -153,6 +153,8 @@ export default function HomePage() {
           <div className="flex gap-4">
             <Link href="/login" className="hover:text-gray-400 transition">Ingresar</Link>
             <Link href="/signup" className="hover:text-gray-400 transition">Registro</Link>
+            <Link href="/terms" className="hover:text-gray-400 transition">Términos y Condiciones</Link>
+            <Link href="/privacy" className="hover:text-gray-400 transition">Política de Privacidad</Link>
           </div>
         </div>
       </footer>
