@@ -15,11 +15,11 @@ function getSupabaseAdmin() {
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ token: string }> }
+  { params }: { params: Promise<{ platform: string }> }
 ) {
   try {
     const resolvedParams = await params
-    const token = resolvedParams.token
+    const token = resolvedParams.platform
 
     if (!token) {
       return NextResponse.json(
