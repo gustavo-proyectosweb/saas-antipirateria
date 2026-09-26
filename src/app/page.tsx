@@ -17,7 +17,7 @@ export default function HomePage() {
               Iniciar Sesión
             </Link>
             <Link
-              href="/register"
+              href="/signup"
               className="text-sm bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-lg transition"
             >
               Probar Gratis
@@ -41,7 +41,7 @@ export default function HomePage() {
           </p>
           <div className="pt-4 flex justify-center gap-4">
             <Link
-              href="/register"
+              href="/signup"
               className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-base px-8 py-3.5 rounded-xl shadow-lg shadow-indigo-600/20 transition"
             >
               Comenzar a Proteger mis PDFs →
@@ -137,7 +137,7 @@ export default function HomePage() {
           </p>
           <div>
             <Link
-              href="/register"
+              href="/signup"
               className="inline-block bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-base px-8 py-3.5 rounded-xl shadow-lg shadow-indigo-600/20 transition"
             >
               Crear Cuenta Gratis →
@@ -152,7 +152,7 @@ export default function HomePage() {
           <p>© {new Date().getFullYear()} StampPDF. Todos los derechos reservados.</p>
           <div className="flex gap-4">
             <Link href="/login" className="hover:text-gray-400 transition">Ingresar</Link>
-            <Link href="/register" className="hover:text-gray-400 transition">Registro</Link>
+            <Link href="/signup" className="hover:text-gray-400 transition">Registro</Link>
           </div>
         </div>
       </footer>
