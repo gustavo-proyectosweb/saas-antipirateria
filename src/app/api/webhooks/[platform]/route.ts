@@ -1,6 +1,6 @@
-// src/app/download/[token]/route.ts
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import * as Sentry from '@sentry/nextjs'
 
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -19,22 +19,29 @@ export async function GET(
 ) {
   try {
     const resolvedParams = await params
-    const token = resolvedParams.platform
+    // 'platform' es el parámetro dinámico que recibe de la URL /api/webhooks/[platform]
+    const platform = resolvedParams.platform
 
-    if (!token) {
+    if (!platform) {
       return NextResponse.json(
-        { error: 'Token de descarga no proporcionado' },
+        { error: 'Plataforma o token no proporcionado' },
         { status: 400 }
       )
     }
 
+    // Log de inicio estructurado
+    console.log('[WEBHOOK_ENDPOINT_ACCESSED]', {
+      timestamp: new Date().toISOString(),
+      platform,
+    })
+
     const supabaseAdmin = getSupabaseAdmin()
 
-    // 1. Obtener la compra asociada al token de descarga
+    // 1. Obtener la compra asociada al token/identificador de plataforma
     const { data: purchase, error } = await supabaseAdmin
       .from('purchases')
       .select('id, buyer_email, is_blocked, product_id, products(master_file_key)')
-      .eq('download_token', token)
+      .eq('download_token', platform)
       .single()
 
     if (error || !purchase) {
@@ -46,7 +53,7 @@ export async function GET(
 
     // 2. VERIFICACIÓN DE LISTA NEGRA (PASO 4)
     if (purchase.is_blocked) {
-      console.warn(`🛑 Intentó de descarga denegado para compra bloqueada ID: ${purchase.id}`)
+      console.warn(`🛑 Intento de descarga denegado para compra bloqueada ID: ${purchase.id}`)
       
       return NextResponse.json(
         {
@@ -57,15 +64,25 @@ export async function GET(
       )
     }
 
-    // 3. Flujo Normal: Si la compra no está bloqueada, procesas el PDF con la marca y sirves el archivo...
-    // (Lógica existente de estampa forense y entrega del stream)
-
+    // 3. Flujo Normal: Procesamiento de estampa forense y entrega
     return NextResponse.json({
       message: 'Token válido, procediendo con estampado y descarga...',
     })
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Error desconocido'
-    console.error('❌ Error en el endpoint de descarga:', error)
+    
+    // Log estructurado en consola del servidor
+    console.error('❌ Error en el endpoint de descarga/webhook:', {
+      timestamp: new Date().toISOString(),
+      error: errorMessage,
+    })
+
+    // Captura del error no manejado en Sentry
+    Sentry.captureException(error, {
+      extra: {
+        endpoint: '/api/webhooks/[platform]',
+      },
+    })
 
     return NextResponse.json(
       { error: 'Error interno del servidor al procesar la descarga', details: errorMessage },
